@@ -347,6 +347,7 @@ void PrimaryVertexProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
         std::cout << std::endl;
       }
     }
+    /*
       int ivtx = 0;
         std::cout << "recvtx,#trk,chi2,ndof,x,dx,y,dy,z,dz" << std::endl;
       for (reco::VertexCollection::const_iterator v = vColl.begin(); v != vColl.end(); ++v) {
@@ -357,6 +358,7 @@ void PrimaryVertexProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
         std::cout << std::endl;
 
       }
+    */
     iEvent.put(std::move(result), algorithm->label);
   }
 }
