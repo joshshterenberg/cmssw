@@ -132,6 +132,13 @@ __device__ __forceinline__ void getBeta0Kernel(unsigned int ntracks, TrackForPV:
       ////////// printf("1./*beta0 %1.3f\n", 1./((*beta)));
       //printf("%1.10f",*beta[0]);
     }
+if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("BETA0: return %1.10f \n", (*beta));
+  }
+#endif
+} 
     __syncthreads();
     //checkRange(tracks, vertices);
 }
@@ -152,6 +159,15 @@ __device__ __forceinline__ void coolingWhileSplittingKernel(unsigned int ntracks
 ////  ////////// if (0 == threadIdx.x && 0 == blockIdx.x)   printf("Start cooling! \n");
   while (((*beta)) < betafreeze) {
     __syncthreads();
+
+if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: current beta %1.10f\n", (*beta));
+  }
+#endif
+}
+
     unsigned int nprev = vertices->nTrueVertex(blockIdx.x);
 ////    if (0 == threadIdx.x && 0 == blockIdx.x)   printf("New T: %1.5f ; nv = %i \n",1./((*beta)), nprev);
     
@@ -312,6 +328,13 @@ __device__ __forceinline__ void outlierRejectionKernel(unsigned int ntracks, Tra
   }
   thermalize(ntracks, tracks, vertices, params, osumtkwt, beta, params.delta_lowT, rho0); // If we don't do outlier rejection, we just thermalize afther the resplitting step at either rho0=0 or rho0 = 1/nv
   __syncthreads();
+  if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: final remerging\n");
+  }
+#endif
+  }
   // With outlier rejection we might lose tracks in some vertices, so merge again
   unsigned int nprev = vertices->nTrueVertex(blockIdx.x);
   __syncthreads();
@@ -336,6 +359,14 @@ __device__ __forceinline__ void outlierRejectionKernel(unsigned int ntracks, Tra
     __syncthreads();
     thermalize(ntracks, tracks, vertices, params, osumtkwt, beta, params.delta_lowT, rho0);
     __syncthreads();
+  }
+
+  if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: start purging\n");
+  }
+#endif
   }
 //  if (0==threadIdx.x)  printf("T loop end\n\n");
   // Now it is time for the purging
@@ -832,27 +863,64 @@ __global__ void bigKernel(unsigned int ntracks, TrackForPV::TrackForPVSoA* track
   extern __shared__ double rbeta[];
   double * _beta = &rbeta[blockIdx.x];
 
+if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("Number of selected tracks %i\n", ntracks);
+  }
+#endif
+}
   initializeKernel(ntracks, tracks, vertices, params);  
   __syncthreads();
   getBeta0Kernel(ntracks, tracks, vertices, params, _beta);
   __syncthreads();
+
 //  if (threadIdx.x == 0 && blockIdx.x == 0)  printf("\n\nFinished get_beta0, \nBeta: %f \n", (float)rbeta[0]);
   thermalizeKernel(ntracks, tracks, vertices, params, osumtkwt, _beta, params.delta_highT, 0.0); // At the first iteration, rho0=0, no purging of any kind
   __syncthreads();
 //  if (threadIdx.x == 0 && blockIdx.x == 0)  printf("\n\nFinished thermalize\n_beta: %f \n", (float)rbeta[0]);
 
+if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: start T loop\n");
+  }
+#endif
+}
+
   coolingWhileSplittingKernel(ntracks, tracks, vertices, params, osumtkwt, _beta); // At the first iteration, rho0=0, no purging of any kind 
   __syncthreads();
 //  if (threadIdx.x == 0 && blockIdx.x == 0)  printf("\n\nFinished cooling\n");
 
+if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: start remerging\n");
+  }
+#endif
+}
   remergeTracksKernel(ntracks, tracks, vertices, params, osumtkwt, _beta); 
   __syncthreads();
 //  if (threadIdx.x == 0 && blockIdx.x == 0)  printf("\n\nFinished remerge\n");
 
+if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: start resplitting\n");
+  }
+#endif
+}
   resplitTracksKernel(ntracks, tracks, vertices, params, osumtkwt, _beta);
   __syncthreads();
 //  if (threadIdx.x == 0 && blockIdx.x == 0)  printf("\n\nFinished resplit\n");
 
+if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: Outlier rejection, with rho0\n");
+  }
+#endif
+}
   outlierRejectionKernel(ntracks, tracks, vertices, params, osumtkwt, _beta);
   __syncthreads();
   //if (threadIdx.x == 0) printf("Beta at the end for block %d is %f\n", blockIdx.x, rbeta[0]);

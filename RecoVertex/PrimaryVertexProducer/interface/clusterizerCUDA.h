@@ -13,6 +13,11 @@
 #include <thrust/sort.h>
 #include "HeterogeneousCore/CUDAUtilities/interface/radixSort.h"
 
+
+#ifdef DEBUG
+#define DEBUGLEVEL -5 // -5 means: debug the same way as CPU; Final value TBD
+#endif
+
 namespace clusterizerCUDA {
   struct clusterParameters {
     double Tmin;
@@ -183,7 +188,24 @@ namespace clusterizerCUDA {
         //if (threadIdx.x == 0) printf("Updated z: %f\n\n",(float) znew);
       }
       vertices->rho(ivertex)    = vertices->rho(ivertex) * vertices->se(ivertex) * (*osumtkwt);  // The relative vertex weight is updated
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+      printf("UPDATE: Params for vertex %i, after update, se=%1.10f, sw=%1.10f, swz=%1.10f, swE=%1.10f, z=%1.10f, rho=%1.10f\n", ivertex, vertices->se(ivertex), vertices->sw(ivertex), vertices->swz(ivertex), vertices->swE(ivertex), vertices->z(ivertex), vertices->rho(ivertex));
+  }
+#endif
     }
+
+  if (threadIdx.x == 0){
+  #ifdef DEBUG
+    if (DEBUGLEVEL == -5){
+      printf("UPDATE: Vertex ordering: \n");
+      for (unsigned int ivertex = 0; ivertex < 512; ivertex ++){
+        printf("%i, ", vertices->order(ivertex);
+      }
+      printf("\n");
+    }
+  #endif
+  }
     
     __syncthreads(); //Just to be extremely careful
 //    if (0==threadIdx.x && 0==blockIdx.x)  printf("update stop 5: \n\n");
@@ -275,7 +297,15 @@ namespace clusterizerCUDA {
         tracks->kmin(itrack) = std::max((unsigned int) maxVerticesPerBlock * blockIdx.x, std::min(kmin, kmax));
         tracks->kmax(itrack) = std::min((unsigned int) (maxVerticesPerBlock * blockIdx.x) + vertices->nTrueVertex(blockIdx.x), std::max(kmin, kmax) + 1);
       }
+
+    #ifdef DEBUG
+    if (DEBUGLEVEL == -5){
+      printf("SET_VTX_RANGE, track %i, kmin %i, kmax %i\n", itrack, tracks->kmin(itrack), tracks->kmax(itrack));
+    }
+    #endif
       // printf("%i vtx_range is finished\n", threadIdx.x);
+
+
     }
     // printf("%i device vtx_range is finished\n", threadIdx.x);
       __syncthreads(); 
@@ -303,6 +333,12 @@ namespace clusterizerCUDA {
     } else if (params.convergence_mode == 1) {
       delta_max = params.delta_lowT / sqrt(std::max((*beta), 1.0));
     }
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("THERMALIZE: Will now thermalize at beta=%1.10f, rho0=%1.10f, delta_max=%1.10f\n", (*beta), rho0, delta_max);
+  }
+#endif
+
     int maxIterations_ = 1000; // TODO:: Set as Param, in the CPU version it is hard coded as well, though. Rarely goes beyond 10-20
     ////////// if (threadIdx.x == 0 && blockIdx.x == 0) printf("vtx_range start\n"); 
     __syncthreads();
@@ -329,6 +365,14 @@ namespace clusterizerCUDA {
         unsigned int ivertex = vertices->order(ivertexO);
         if (vertices->aux1(ivertex) >= dmax) dmax = vertices->aux1(ivertex);
       }
+  if (threadIdx.x == 0){
+  #ifdef DEBUG
+    if (DEBUGLEVEL == -5){
+      printf("UPDATE: Delta %1.10f\n", dmax);
+    }
+  #endif
+  }
+
       delta_sum_range += dmax;
  //     __syncthreads();
  //       if (threadIdx.x == 0 && blockIdx.x == 0) printf("Thermalize loop 2 time: %i\n\n\n", (int) (clock()-stop));
@@ -340,6 +384,7 @@ namespace clusterizerCUDA {
 //        if (threadIdx.x == 0 && blockIdx.x == 0) printf("-------Set range done\n");
         delta_sum_range = 0;
       }
+
       /*
         for (unsigned int ivertexO = 0 ; ivertexO < vertices->nTrueVertex(blockIdx.x); ivertexO+=gridSize){ // TODO::Currently we are doing this in all threads in parallel, might be optimized using shared memory?
           unsigned int ivertex = vertices->order(ivertexO);
@@ -367,7 +412,19 @@ namespace clusterizerCUDA {
   __device__ __forceinline__ void merge(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, TrackForPV::VertexForPVSoA* vertices, clusterParameters params, double * osumtkwt, double* beta){
 
  //   clock_t start = clock();
-    
+   if (threadIdx.x == 0){
+  #ifdef DEBUG
+    if (DEBUGLEVEL == -5){
+      printf("MERGE START: Vertex ordering: \n");
+      for (unsigned int ivertex = 0; ivertex < 512; ivertex ++){
+        printf("%i, ", vertices->order(ivertex);
+      }
+      printf("\n");
+    }
+  #endif
+  }
+
+ 
     size_t firstElement = threadIdx.x + blockIdx.x * blockDim.x; // This is going to be the vertex index
     size_t gridSize = blockDim.x * gridDim.x;
     size_t maxVerticesPerBlock = (int) (vertices->stride()/gridDim.x);
@@ -399,6 +456,14 @@ namespace clusterizerCUDA {
       }
     }
     if (ncritical == 0) return;
+
+
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("MERGE: %i vertex in critical\n", ncritical);
+  }
+#endif
+
     __syncthreads();
     // Yep, this is a very bogus sorting algorithm, not even quicksort, but the size of critical shouldn't be > 10
       for (unsigned int sortO = 0; sortO < ncritical ; ++sortO){//This we might be able to parallelize more. TODO
@@ -418,6 +483,7 @@ namespace clusterizerCUDA {
         //printf("removing vertex: (%d, %d)\n",ivertexO, ivertex);
         __syncthreads(); 
         if (0 == threadIdx.x){ // Really no way of parallelizing this I'm afraid
+
             vertices->isGood(ivertex) = false; // Delete it!
             double rho =  vertices->rho(ivertex) + vertices->rho(ivertexnext);
             if (rho > 0){ 
@@ -428,7 +494,11 @@ namespace clusterizerCUDA {
             } 
             vertices->rho(ivertexnext)  = rho;
             vertices->sw(ivertexnext)  += vertices->sw(ivertexnext);
-
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("MERGE: merge vertex %i to get rho=%1.10f, sw=%1.10f, z=%1.10f \n", ivertex, vertices->rho(ivertexnext), vertices->sw(ivertexnext), vertices->z(ivertexnext));
+  }
+#endif
             for (unsigned int ivertexOO = ivertexO ; ivertexOO < maxVerticesPerBlock * blockIdx.x + nvprev - 1; ++ivertexOO){ // TODO:: Any tricks here?
                 //if (vertices->order(ivertexOO) == -1) printf("\n\nMoving -1 from %d to %d \n\n", ivertexOO, ivertexOO+1);
                 vertices->order(ivertexOO) =vertices->order(ivertexOO+1);
@@ -458,6 +528,18 @@ namespace clusterizerCUDA {
       __syncthreads();
       set_vtx_range(ntracks, tracks, vertices, params, osumtkwt, beta);
       __syncthreads(); 
+   if (threadIdx.x == 0){
+  #ifdef DEBUG
+    if (DEBUGLEVEL == -5){
+      printf("MERGE FINISH: Vertex ordering: \n");
+      for (unsigned int ivertex = 0; ivertex < 512; ivertex ++){
+        printf("%i, ", vertices->order(ivertex);
+      }
+      printf("\n");
+    }
+  #endif
+  }
+
  //   if (threadIdx.x == 0 && blockIdx.x == 0) printf("Merge function time: %i\n\n\n", (int) (clock()-start));
  //   __syncthreads();
     }
@@ -465,6 +547,18 @@ namespace clusterizerCUDA {
   
 
   __device__ __forceinline__ void split(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, TrackForPV::VertexForPVSoA* vertices, clusterParameters params, double * osumtkwt, double* beta, double threshold){
+
+   if (threadIdx.x == 0){
+  #ifdef DEBUG
+    if (DEBUGLEVEL == -5){
+      printf("SPLIT START: Vertex ordering: \n");
+      for (unsigned int ivertex = 0; ivertex < 512; ivertex ++){
+        printf("%i, ", vertices->order(ivertex);
+      }
+      printf("\n");
+    }
+  #endif
+  }
 
  //   clock_t start = clock();
 
@@ -523,6 +617,15 @@ namespace clusterizerCUDA {
     if (ncritical == 0 || maxVerticesPerBlock == nvprev) return;
     //printf("%i Splitting verified\n", threadIdx.x);
     __syncthreads();
+
+if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("SPLIT: %i vertex in critical\n", ncritical);
+  }
+#endif
+}
+
     // Yep, this is a very bogus sorting algorithm, not even quicksort, but the size of critical shouldn't be > 10
 
       for (unsigned int sortO = 0; sortO < ncritical ; ++sortO){//This we might be able to parallelize more. TODO
@@ -545,7 +648,13 @@ namespace clusterizerCUDA {
         // A little bit of safety here. First is needed to avoid reading the -1 entry of vertices->order. Second is not as far as we don't go over 511 vertices, but better keep it just in case
         if (ivertexO > blockIdx.x * maxVerticesPerBlock) ivertexprev = vertices->order(ivertexO-1);  // This will be used in a couple of computations
         if (ivertexO < blockIdx.x * maxVerticesPerBlock + nvprev -1) ivertexnext = vertices->order(ivertexO+1);  // This will be used in a couple of computations
-
+if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("SPLIT: split vertex %i at rho=%1.10f, sw=%1.10f, z=%1.10f \n", ivertex, vertices->rho(ivertex), vertices->sw(ivertex), vertices->z(ivertex));
+  }
+#endif
+}
 //        if (threadIdx.x == 0 && blockIdx.x == 0) printf("Split loop of 1.-1 event: %i\n\n",(int) (clock()-stop));
 //        stop = clock();
         if (threadIdx.x == 0) {
@@ -669,6 +778,14 @@ namespace clusterizerCUDA {
 
               //stop = clock();
               //printf("Split loop of 1 event: %i\n\n",(int) (stop-start));
+
+if (threadIdx.x == 0){
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("SPLIT: vertex was splitted to rho1=%1.10f, z1=%1.10f, rho2=%1.10f, z2=%1.10f \n", vertices->rho(ivertex), vertices->z(ivertex), vertices->rho(nnew), vertices->z(nnew));
+  }
+#endif
+}
           }
 
           __syncthreads();
@@ -693,6 +810,19 @@ namespace clusterizerCUDA {
         ////////// printf("Vertex created\n");
       }
     }
+
+   if (threadIdx.x == 0){
+  #ifdef DEBUG
+    if (DEBUGLEVEL == -5){
+      printf("SPLIT FINISH: Vertex ordering: \n");
+      for (unsigned int ivertex = 0; ivertex < 512; ivertex ++){
+        printf("%i, ", vertices->order(ivertex);
+      }
+      printf("\n");
+    }
+  #endif
+  }
+
     __syncthreads();
  //   if (threadIdx.x == 0 && blockIdx.x == 0) printf("Split function time: %i\n\n\n", (int) (clock()-start));
  //   __syncthreads();
@@ -787,6 +917,13 @@ namespace clusterizerCUDA {
     if (k0 != (maxVerticesPerBlock * blockIdx.x + nvprev)){
         __syncthreads();
         if (0==threadIdx.x){
+
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("PURGE: purge vertex %i at rho=%1.10f, sw=%1.10f, z=%1.10f \n", k0, vertices->rho(vertices->order(k0)),  vertices->sw(vertices->order(k0)),  vertices->z(vertices->order(k0)));
+  }
+#endif
+
             for (unsigned int ivertexOO = k0; ivertexOO < maxVerticesPerBlock * blockIdx.x + nvprev - 1; ++ivertexOO){ // TODO:: Any tricks here?
                 vertices->order(ivertexOO) =vertices->order(ivertexOO+1);
             }
