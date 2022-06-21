@@ -12,9 +12,9 @@
 
 using namespace std;
 
-//#define DEBUG
+#define DEBUG
 #ifdef DEBUG
-#define DEBUGLEVEL 0
+#define DEBUGLEVEL -5 // -5 means: debug the same way as GPU; Final value TBD
 #endif
 
 DAClusterizerInZ_vect::DAClusterizerInZ_vect(const edm::ParameterSet& conf) {
@@ -171,11 +171,13 @@ DAClusterizerInZ_vect::track_t DAClusterizerInZ_vect::fill(const vector<reco::Tr
   // prepare track data for clustering
   track_t tks;
   double sumtkwt = 0.;
+  int itk = 0;
   for (auto it = tracks.begin(); it != tracks.end(); it++) {
     if (!(*it).isValid())
       continue;
     double t_tkwt = 1.;
     double t_z = ((*it).stateAtBeamLine().trackStateAtPCA()).position().z();
+
     if (std::fabs(t_z) > 1000.)
       continue;
     auto const& t_mom = (*it).stateAtBeamLine().trackStateAtPCA().momentum();
@@ -186,12 +188,14 @@ DAClusterizerInZ_vect::track_t DAClusterizerInZ_vect::fill(const vector<reco::Tr
                          std::pow(t_mom.z(), 2) / std::pow(t_mom.perp2(), 2)  // beam spot width
                    + std::pow(vertexSize_, 2);  // intrinsic vertex size, safer for outliers and short lived decays
     t_dz2 = 1. / t_dz2;
+
     if (edm::isNotFinite(t_dz2) || t_dz2 < std::numeric_limits<double>::min())
       continue;
     if (d0CutOff_ > 0) {
       Measurement1D atIP = (*it).stateAtBeamLine().transverseImpactParameter();  // error contains beamspot
       t_tkwt = 1. / (1. + local_exp(std::pow(atIP.value() / atIP.error(), 2) -
                                     std::pow(d0CutOff_, 2)));  // reduce weight for high ip tracks
+
       if (edm::isNotFinite(t_tkwt) || t_tkwt < std::numeric_limits<double>::epsilon()) {
         edm::LogWarning("DAClusterizerinZ_vect") << "rejected track t_tkwt " << t_tkwt;
         continue;  // usually is > 0.99
@@ -208,8 +212,10 @@ DAClusterizerInZ_vect::track_t DAClusterizerInZ_vect::fill(const vector<reco::Tr
   if (DEBUGLEVEL > 0) {
     std::cout << "Track count (Z) " << tks.getSize() << std::endl;
   }
+  if (DEBUGLEVEL == -5){
+    printf("Number of selected tracks %i\n", tks.getSize());
+  }
 #endif
-
   return tks;
 }
 
@@ -263,6 +269,11 @@ void DAClusterizerInZ_vect::set_vtx_range(double beta, track_t& gtracks, vertex_
       gtracks.kmin[itrack] = max(0U, min(kmin, kmax));
       gtracks.kmax[itrack] = min(nv, max(kmin, kmax) + 1);
     }
+    #ifdef DEBUG
+    if (DEBUGLEVEL == -5){
+      printf("SET_VTX_RANGE, track %i, kmin %i, kmax %i\n", itrack, gtracks.kmin[itrack], gtracks.kmax[itrack]);
+    }
+    #endif
   }
 }
 
@@ -289,7 +300,7 @@ double DAClusterizerInZ_vect::update(
   if (rho0 > 0) {
     Z_init = rho0 * local_exp(-beta * dzCutOff_ * dzCutOff_);  // cut-off
   }
-
+  //D printf("Update running, nt=%i, nv=%i, Zinit=%1.6f, rho0=%1.6f, updateTc=%i\n", nt, nv, Z_init, rho0, updateTc);
   // define kernels
   auto kernel_calc_exp_arg_range = [beta](const unsigned int itrack,
                                           track_t const& tracks,
@@ -301,6 +312,7 @@ double DAClusterizerInZ_vect::update(
 
     // auto-vectorized
     for (unsigned int ivertex = kmin; ivertex < kmax; ++ivertex) {
+      //D printf("Track %i, vertex %i, track_z %1.10f, track_dz2 %1.10f, track_sum_Z: %1.10f, vertex_z: %1.10f, beta: %1.10f\n", itrack, ivertex, track_z, tracks.dz2[itrack], tracks.sum_Z[itrack], vertices.zvtx[ivertex], beta);
       auto mult_res = track_z - vertices.zvtx[ivertex];
       vertices.exp_arg[ivertex] = botrack_dz2 * (mult_res * mult_res);
     }
@@ -360,6 +372,7 @@ double DAClusterizerInZ_vect::update(
       gvertices.swz[ivertex] = 0.0;
     }
   }
+  //D printf("Params for first vertex, after update, se=%1.10f, sw=%1.10f, swz=%1.10f, swE=%1.10f, z=%1.10f, rho=%1.10f\n", gvertices.se[0], gvertices.sw[0], gvertices.swz[0], gvertices.swE[0], gvertices.zvtx[0], gvertices.rho[0]);
 
   // loop over tracks
   for (auto itrack = 0U; itrack < nt; ++itrack) {
@@ -407,6 +420,14 @@ double DAClusterizerInZ_vect::update(
 
   double delta = kernel_calc_z(gvertices);
 
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    for (unsigned int ivertex = 0; ivertex < nv; ++ivertex){
+      printf("UPDATE: Params for vertex %i, after update, se=%1.10f, sw=%1.10f, swz=%1.10f, swE=%1.10f, z=%1.10f, rho=%1.10f\n", ivertex, gvertices.se[ivertex], gvertices.sw[ivertex], gvertices.swz[ivertex], gvertices.swE[ivertex], gvertices.zvtx[ivertex], gvertices.rho[ivertex]);
+    }
+    printf("UPDATE: Delta %1.10f\n", delta);
+  }
+#endif
   // return how much the prototypes moved
   return delta;
 }
@@ -422,7 +443,13 @@ unsigned int DAClusterizerInZ_vect::thermalize(
   } else if (convergence_mode_ == 1) {
     delta_max = delta_lowT_ / sqrt(std::max(beta, 1.0));
   }
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("THERMALIZE: Will now thermalize at beta=%1.10f, rho0=%1.10f, delta_max=%1.10f\n", beta, rho0, delta_max);
+  }
+#endif
 
+  //D printf("Thermalize. delta_max=%1.10f \n", delta_max);
   set_vtx_range(beta, tks, v);
   double delta_sum_range = 0;  // accumulate max(|delta-z|) as a lower bound
   std::vector<double> z0 = v.zvtx_vec;
@@ -430,10 +457,11 @@ unsigned int DAClusterizerInZ_vect::thermalize(
   while (niter++ < maxIterations_) {
     delta = update(beta, tks, v, rho0);
     delta_sum_range += delta;
-
+    //D printf("Iteration %i, delta=%1.6f, delta_sum=%1.6f\n", niter, delta, delta_sum_range);
     if (delta_sum_range > zrange_min_) {
       for (unsigned int k = 0; k < v.getSize(); k++) {
         if (std::abs(v.zvtx_vec[k] - z0[k]) > zrange_min_) {
+          //D printf("Setting range again for vertex %i \n", k);
           set_vtx_range(beta, tks, v);
           delta_sum_range = 0;
           z0 = v.zvtx_vec;
@@ -480,6 +508,13 @@ bool DAClusterizerInZ_vect::merge(vertex_t& y, track_t& tks, double& beta) const
 
   std::stable_sort(critical.begin(), critical.end(), std::less<std::pair<double, unsigned int> >());
 
+
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("MERGE: %li vertex in critical\n", critical.size());
+  }
+#endif
+
   for (unsigned int ik = 0; ik < critical.size(); ik++) {
     unsigned int k = critical[ik].second;
     double rho = y.rho[k] + y.rho[k + 1];
@@ -502,6 +537,13 @@ bool DAClusterizerInZ_vect::merge(vertex_t& y, track_t& tks, double& beta) const
     y.removeItem(k + 1, tks);
     set_vtx_range(beta, tks, y);
     y.extractRaw();
+
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("MERGE: merge vertex %i to get rho=%1.10f, sw=%1.10f, z=%1.10f \n", k, y.rho[k], y.sw[k], y.zvtx[k]);
+  }
+#endif
+
     return true;
   }
 
@@ -578,7 +620,11 @@ bool DAClusterizerInZ_vect::purge(vertex_t& y, track_t& tks, double& rho0, const
                 << " with sump=" << sumpmin << "  rho*nt =" << y.rho[k0] * nt << endl;
     }
 #endif
-
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("PURGE: purge vertex %i at rho=%1.10f, sw=%1.10f, z=%1.10f \n", k0, y.rho[k0], y.sw[k0], y.zvtx[k0]);
+  }
+#endif
     y.removeItem(k0, tks);
     set_vtx_range(beta, tks, y);
     return true;
@@ -617,9 +663,13 @@ double DAClusterizerInZ_vect::beta0(double betamax, track_t const& tks, vertex_t
 
     if (Tc > T0)
       T0 = Tc;
-
   }  // vertex loop (normally there should be only one vertex at beta=0)
 
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("BETA0: first T0 is %1.10f, coolingsteps=%i \n", T0, 1 - int(std::log(T0 * betamax) / std::log(coolingFactor_)));
+  }
+#endif
 #ifdef DEBUG
   if (DEBUGLEVEL > 0) {
     std::cout << "DAClusterizerInZ_vect.beta0:   Tc = " << T0 << std::endl;
@@ -630,10 +680,20 @@ double DAClusterizerInZ_vect::beta0(double betamax, track_t const& tks, vertex_t
 
   if (T0 > 1. / betamax) {
     int coolingsteps = 1 - int(std::log(T0 * betamax) / std::log(coolingFactor_));
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("BETA0: return %1.10f \n", betamax * std::pow(coolingFactor_, coolingsteps));
+  }
+#endif
 
     return betamax * std::pow(coolingFactor_, coolingsteps);
   } else {
     // ensure at least one annealing step
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("BETA0: return %1.10f \n", betamax * coolingFactor_);
+  }
+#endif
     return betamax * coolingFactor_;
   }
 }
@@ -662,11 +722,23 @@ bool DAClusterizerInZ_vect::split(const double beta, track_t& tks, vertex_t& y, 
 
   std::stable_sort(critical.begin(), critical.end(), std::greater<std::pair<double, unsigned int> >());
 
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("SPLIT: %li vertex in critical\n", critical.size());
+  }
+#endif
+
   bool split = false;
   const unsigned int nt = tks.getSize();
 
   for (unsigned int ic = 0; ic < critical.size(); ic++) {
     unsigned int k = critical[ic].second;
+
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("SPLIT: split vertex %i at rho=%1.10f, sw=%1.10f, z=%1.10f \n", k, y.rho[k], y.sw[k], y.zvtx[k]);
+  }
+#endif
 
     // estimate subcluster positions and weight
     double p1 = 0, z1 = 0, w1 = 0;
@@ -741,7 +813,11 @@ bool DAClusterizerInZ_vect::split(const double beta, track_t& tks, vertex_t& y, 
       y.insertItem(k, z1, pk1, tks);
       if (k == 0)
         y.extractRaw();
-
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("SPLIT: vertex was splitted to rho1=%1.10f, z1=%1.10f, rho2=%1.10f, z2=%1.10f \n", y.rho[k], y.zvtx[k], y.rho[k+1], y.zvtx[k+1]);
+  }
+#endif
       nv++;
 
       // adjust remaining pointers
@@ -785,19 +861,42 @@ vector<TransientVertex> DAClusterizerInZ_vect::vertices(const vector<reco::Trans
 #endif
 
   thermalize(beta, tks, y, delta_highT_);
+  //D for (unsigned int ivertexO = 0; ivertexO < y.getSize() ; ivertexO++){
+  //D  printf("At T=%1.3f, ivertex=%i, pos=%1.10f, rho=%1.10f\n", 1./(beta), ivertexO, y.zvtx_vec[ivertexO], y.rho_vec[ivertexO]);
+  //D }
 
   // annealing loop, stop when T<Tmin  (i.e. beta>1/Tmin)
 
-  double betafreeze = betamax_ * sqrt(coolingFactor_);
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: start T loop\n");
+  }
+#endif
 
+  double betafreeze = betamax_ * sqrt(coolingFactor_);
+//  printf("Start cooling! \n");
   while (beta < betafreeze) {
+//    printf("New T: %1.5f ; nv = %i \n",1./(beta), y.getSize());
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: current beta %1.10f\n", beta);
+  }
+#endif
     while (merge(y, tks, beta)) {
+//      printf("After merging nv = %i \n", y.getSize());
       update(beta, tks, y, rho0, false);
     }
+//    printf("After merge loop nv = %i \n", y.getSize());
     split(beta, tks, y);
+//    printf("After splitting nv = %i \n", y.getSize());
 
     beta = beta / coolingFactor_;
     thermalize(beta, tks, y, delta_highT_);
+//    printf("End of while loop, update the temp!\n");
+
+//    for (unsigned int ivertexO = 0; ivertexO < y.getSize() ; ivertexO++){
+//      printf("At T=%1.3f, ivertex=%i, pos=%1.10f, rho=%1.10f\n", 1./(beta), ivertexO, y.zvtx_vec[ivertexO], y.rho_vec[ivertexO]);
+//    }
   }
 
 #ifdef DEBUG
@@ -812,11 +911,22 @@ vector<TransientVertex> DAClusterizerInZ_vect::vertices(const vector<reco::Trans
   set_vtx_range(beta, tks, y);
   update(beta, tks, y, rho0, false);
 
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: start remerging\n");
+  }
+#endif
+
   while (merge(y, tks, beta)) {
     set_vtx_range(beta, tks, y);
     update(beta, tks, y, rho0, false);
   }
 
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: start resplitting\n");
+  }
+#endif
   unsigned int ntry = 0;
   double threshold = 1.0;
   while (split(beta, tks, y, threshold) && (ntry++ < 10)) {
@@ -834,6 +944,12 @@ vector<TransientVertex> DAClusterizerInZ_vect::vertices(const vector<reco::Trans
   if (DEBUGLEVEL > 0) {
     std::cout << "DAClusterizerInZ_vect::vertices :"
               << "turning on outlier rejection at T=" << 1 / beta << std::endl;
+  }
+#endif
+
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: Outlier rejection, with rho0\n");
   }
 #endif
 
@@ -857,6 +973,12 @@ vector<TransientVertex> DAClusterizerInZ_vect::vertices(const vector<reco::Trans
     dump(beta, y, tks, 2, rho0);
 #endif
 
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: final remerging\n");
+  }
+#endif
+
   // merge again  (some cluster split by outliers collapse here)
   while (merge(y, tks, beta)) {
     set_vtx_range(beta, tks, y);
@@ -871,6 +993,11 @@ vector<TransientVertex> DAClusterizerInZ_vect::vertices(const vector<reco::Trans
   }
   if (DEBUGLEVEL > 2)
     dump(beta, y, tks, 2, rho0);
+#endif
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: start purging\n");
+  }
 #endif
 
   // go down to the purging temperature (if it is lower than tmin)
@@ -916,15 +1043,26 @@ vector<TransientVertex> DAClusterizerInZ_vect::vertices(const vector<reco::Trans
     dump(beta, y, tks, 2, rho0);
 #endif
 
+
+#ifdef DEBUG
+  if (DEBUGLEVEL == -5){
+    printf("VERTICES: save tracks\n");
+  }
+#endif
+
   // select significant tracks and use a TransientVertex as a container
 
   set_vtx_range(beta, tks, y);
   const unsigned int nv = y.getSize();
+  //std::cout << "ivtxO,z" << std::endl;
   for (unsigned int k = 0; k < nv; k++) {
     if (edm::isNotFinite(y.rho[k]) || edm::isNotFinite(y.zvtx[k])) {
       y.rho[k] = 0;
       y.zvtx[k] = 0;
     }
+//    else{
+//        std::cout << k << "," << y.zvtx[k] << std::endl;
+//    }
   }
 
   const auto z_sum_init = rho0 * local_exp(-beta * dzCutOff_ * dzCutOff_);
@@ -943,18 +1081,20 @@ vector<TransientVertex> DAClusterizerInZ_vect::vertices(const vector<reco::Trans
       tks.sum_Z[i] += y.rho[k] * y.exp[k];
     }
     const double invZ = tks.sum_Z[i] > 1e-100 ? 1. / tks.sum_Z[i] : 0.0;
-
+    double p_max = -1;
+    unsigned int iMax = 100000;
     for (auto k = kmin; k < kmax; k++) {
       double p = y.rho[k] * y.exp[k] * invZ;
-      if (p > mintrkweight_) {
+      if (p>p_max && p > mintrkweight_) {
         // assign  track i -> vertex k (hard, mintrkweight_ should be >= 0.5 here
-        vtx_track_indices[k].push_back(i);
-        break;
+        p_max = p;
+        iMax = k;
       }
     }
-
+  if (iMax < 1024)  vtx_track_indices[iMax].push_back(i);
   }  // track loop
 
+  //std::cout << "z vrtx,ith track" << std::endl;
   GlobalError dummyError(0.01, 0, 0.01, 0., 0., 0.01);
   for (unsigned int k = 0; k < nv; k++) {
     if (!vtx_track_indices[k].empty()) {
@@ -962,6 +1102,7 @@ vector<TransientVertex> DAClusterizerInZ_vect::vertices(const vector<reco::Trans
       vector<reco::TransientTrack> vertexTracks;
       for (auto i : vtx_track_indices[k]) {
         vertexTracks.push_back(*(tks.tt[i]));
+        //std::cout << y.zvtx[k] << "," << (*tks.tt[i]).stateAtBeamLine().trackStateAtPCA().position().z() << std::endl;
       }
       TransientVertex v(pos, dummyError, vertexTracks, 0);
       clusters.push_back(v);
