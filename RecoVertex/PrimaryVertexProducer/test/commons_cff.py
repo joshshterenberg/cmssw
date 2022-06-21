@@ -1,7 +1,7 @@
 import FWCore.ParameterSet.Config as cms
 
 ## Validation step
-
+"""
 tpClusterProducer = cms.EDProducer("ClusterTPAssociationProducer",
     mightGet = cms.optional.untracked.vstring,
     phase2OTClusterSrc = cms.InputTag("siPhase2Clusters"),
@@ -15,6 +15,25 @@ tpClusterProducer = cms.EDProducer("ClusterTPAssociationProducer",
     trackingParticleSrc = cms.InputTag("mix","MergedTrackTruth")
 )
 
+
+tpClusterProducer = cms.EDProducer("ClusterTPAssociationProducer",
+    mightGet = cms.optional.untracked.vstring,
+    phase2OTClusterSrc = cms.InputTag("siPhase2Clusters"),
+    phase2OTSimLinkSrc = cms.InputTag("simSiPixelDigis","Tracker"),
+    pixelClusterSrc = cms.InputTag("siPixelClusters"),
+    pixelSimLinkSrc = cms.InputTag("simSiPixelDigis"),
+    simTrackSrc = cms.InputTag("g4SimHits"),
+    stripClusterSrc = cms.InputTag("siStripClusters"),
+    stripSimLinkSrc = cms.InputTag("simSiStripDigis"),
+    throwOnMissingCollections = cms.bool(True),
+    trackingParticleSrc = cms.InputTag("mix","MergedTrackTruth")
+)
+"""
+from SimTracker.TrackerHitAssociation.tpClusterProducerDefault_cfi import tpClusterProducerDefault as _tpClusterProducerDefault
+
+tpClusterProducer = _tpClusterProducerDefault.clone()
+
+
 quickTrackAssociatorByHits = cms.EDProducer("QuickTrackAssociatorByHitsProducer",
     AbsoluteNumberOfHits = cms.bool(False),
     Cut_RecoToSim = cms.double(0.75),
@@ -27,6 +46,13 @@ quickTrackAssociatorByHits = cms.EDProducer("QuickTrackAssociatorByHitsProducer"
     useClusterTPAssociation = cms.bool(True)
 )
 
+trackingParticleRecoTrackAsssociation = cms.EDProducer("TrackAssociatorEDProducer",
+    associator = cms.InputTag("quickTrackAssociatorByHits"),
+    ignoremissingtrackcollection = cms.untracked.bool(False),
+    label_tp = cms.InputTag("mix","MergedTrackTruth"),
+    label_tr = cms.InputTag("generalTracks")
+)
+
 VertexAssociatorByPositionAndTracks = cms.EDProducer("VertexAssociatorByPositionAndTracksProducer",
     absT = cms.double(-1),
     absZ = cms.double(0.1),
@@ -36,15 +62,10 @@ VertexAssociatorByPositionAndTracks = cms.EDProducer("VertexAssociatorByPosition
     sharedTrackFraction = cms.double(-1),
     sigmaT = cms.double(-1),
     sigmaZ = cms.double(3),
+    sigmaXY = cms.double(3),
     trackAssociation = cms.InputTag("trackingParticleRecoTrackAsssociation")
 )
 
-trackingParticleRecoTrackAsssociation = cms.EDProducer("TrackAssociatorEDProducer",
-    associator = cms.InputTag("quickTrackAssociatorByHits"),
-    ignoremissingtrackcollection = cms.untracked.bool(False),
-    label_tp = cms.InputTag("mix","MergedTrackTruth"),
-    label_tr = cms.InputTag("generalTracks")
-)
 
 
 vertexAnalysis = cms.EDProducer("PrimaryVertexAnalyzer4PUSlimmed",
