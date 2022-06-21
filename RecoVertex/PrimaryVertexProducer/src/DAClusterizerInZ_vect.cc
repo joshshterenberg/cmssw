@@ -12,7 +12,7 @@
 
 using namespace std;
 
-#define DEBUG
+//#define DEBUG
 #ifdef DEBUG
 #define DEBUGLEVEL -5 // -5 means: debug the same way as GPU; Final value TBD
 #endif

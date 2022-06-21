@@ -40,28 +40,19 @@ options.register( "firstRun",
                   VarParsing.VarParsing.varType.int,
                   "the first run"
                   )
-options.register( "PU",
-                  20,  #default value
-                  VarParsing.VarParsing.multiplicity.singleton,
-                  VarParsing.VarParsing.varType.float,
-                  "Average pile up interactions"
-                  )
 
 options.parseArguments()
-PU = options.PU
 import os
-files = tuple([ "file:/eos/user/c/cericeci/PV/QCD_%i/"%PU + f for f in os.listdir("/eos/user/c/cericeci/PV/QCD_%i/"%PU)][0:1])
-files = tuple(["file:/eos/user/c/cericeci/PV/QCD_5_update/reco_1002.root"])
 
 
 process.source = cms.Source("PoolSource",
-    fileNames = cms.untracked.vstring(files),
+    fileNames = cms.untracked.vstring(options.inputFiles),
     secondaryFileNames = cms.untracked.vstring(),
     skipEvents=cms.untracked.uint32(7)
 )
 
 process.maxEvents = cms.untracked.PSet(
-    input = cms.untracked.int32(1)
+    input = cms.untracked.int32(options.maxEvents)
 )
 
 process.out = cms.OutputModule("PoolOutputModule",
@@ -71,7 +62,7 @@ process.out = cms.OutputModule("PoolOutputModule",
     outputCommands = cms.untracked.vstring( (
         'drop *', 'keep PileupSummaryInfos_*_*_*', 'keep recoVertexs_*_*_*', 'keep *_genParticles_*_*', 'keep *_pixelTracks_*_RECO')
     ),
-    fileName = cms.untracked.string('offlineOnly%i_plustracksGPU_oneevent.root'%PU),
+    fileName = cms.untracked.string(options.outputFile),
 )
 
 #process.Timing = cms.Service("Timing",

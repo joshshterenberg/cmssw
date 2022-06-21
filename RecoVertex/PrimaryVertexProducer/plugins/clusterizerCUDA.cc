@@ -5,6 +5,12 @@
 #include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
 #include "RecoVertex/PrimaryVertexProducer/interface/clusterizerCUDA.h"
 #include <stdio.h>
+
+//#define DEBUG
+#ifdef DEBUG
+#define DEBUGLEVEL -5 // -5 means: debug the same way as CPU; Final value TBD
+#endif
+
 namespace clusterizerCUDA {
 
 

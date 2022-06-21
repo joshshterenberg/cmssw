@@ -13,7 +13,7 @@
 #include <thrust/sort.h>
 #include "HeterogeneousCore/CUDAUtilities/interface/radixSort.h"
 
-
+//#define DEBUG
 #ifdef DEBUG
 #define DEBUGLEVEL -5 // -5 means: debug the same way as CPU; Final value TBD
 #endif
@@ -486,14 +486,14 @@ namespace clusterizerCUDA {
 
             vertices->isGood(ivertex) = false; // Delete it!
             double rho =  vertices->rho(ivertex) + vertices->rho(ivertexnext);
-            if (rho > 0){ 
+            if (rho > 1e-100){ 
               vertices->z(ivertexnext) = (vertices->rho(ivertex) * vertices->z(ivertex) + vertices->rho(ivertexnext) * vertices->z(ivertexnext)) / rho;
             } 
             else{
               vertices->z(ivertexnext) = 0.5 * (vertices->z(ivertex) + vertices->z(ivertexnext));
             } 
             vertices->rho(ivertexnext)  = rho;
-            vertices->sw(ivertexnext)  += vertices->sw(ivertexnext);
+            vertices->sw(ivertexnext)  += vertices->sw(ivertex);
 #ifdef DEBUG
   if (DEBUGLEVEL == -5){
     printf("MERGE: merge vertex %i to get rho=%1.10f, sw=%1.10f, z=%1.10f \n", ivertex, vertices->rho(ivertexnext), vertices->sw(ivertexnext), vertices->z(ivertexnext));
@@ -521,7 +521,10 @@ namespace clusterizerCUDA {
             //if (((tracks->kmin(itrack) > ivertexO) || ((tracks->kmax(itrack) < (tracks->kmin(itrack) + 1)) && (tracks->kmin(itrack) > maxVerticesPerBlock*blockIdx.x))) && vertices->order(tracks->kmin(itrack)-1) == -1) printf("\n\nFOUND THE ERROR: kmin merge\n\n");
             if (tracks->kmax(itrack) > ivertexO) tracks->kmax(itrack)--;
             if ((tracks->kmin(itrack) > ivertexO) || ((tracks->kmax(itrack) < (tracks->kmin(itrack) + 1)) && (tracks->kmin(itrack) > maxVerticesPerBlock*blockIdx.x))) tracks->kmin(itrack)--;
-        } 
+        }
+        __syncthreads();
+        set_vtx_range(ntracks, tracks, vertices, params, osumtkwt, beta); 
+        return; 
       }
 
       
