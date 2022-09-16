@@ -48,7 +48,7 @@ import os
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(options.inputFiles),
     secondaryFileNames = cms.untracked.vstring(),
-    skipEvents=cms.untracked.uint32(7)
+    skipEvents=cms.untracked.uint32(0)
 )
 
 process.maxEvents = cms.untracked.PSet(

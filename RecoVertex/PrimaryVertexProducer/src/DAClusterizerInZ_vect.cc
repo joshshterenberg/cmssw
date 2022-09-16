@@ -269,11 +269,11 @@ void DAClusterizerInZ_vect::set_vtx_range(double beta, track_t& gtracks, vertex_
       gtracks.kmin[itrack] = max(0U, min(kmin, kmax));
       gtracks.kmax[itrack] = min(nv, max(kmin, kmax) + 1);
     }
-    #ifdef DEBUG
-    if (DEBUGLEVEL == -5){
-      printf("SET_VTX_RANGE, track %i, kmin %i, kmax %i\n", itrack, gtracks.kmin[itrack], gtracks.kmax[itrack]);
-    }
-    #endif
+    //#ifdef DEBUG
+    //if (DEBUGLEVEL == -5){
+    //  printf("SET_VTX_RANGE, track %i, kmin %i, kmax %i\n", itrack, gtracks.kmin[itrack], gtracks.kmax[itrack]);
+    //}
+    //#endif
   }
 }
 
@@ -312,7 +312,7 @@ double DAClusterizerInZ_vect::update(
 
     // auto-vectorized
     for (unsigned int ivertex = kmin; ivertex < kmax; ++ivertex) {
-      //D printf("Track %i, vertex %i, track_z %1.10f, track_dz2 %1.10f, track_sum_Z: %1.10f, vertex_z: %1.10f, beta: %1.10f\n", itrack, ivertex, track_z, tracks.dz2[itrack], tracks.sum_Z[itrack], vertices.zvtx[ivertex], beta);
+      //printf("Track %i, vertex %i, track_z %1.10f, track_dz2 %1.10f, track_weight: %1.10f, track_sum_Z: %1.10f, vertex_z: %1.10f, beta: %1.10f\n", itrack, ivertex, track_z, tracks.dz2[itrack], tracks.tkwt[itrack], tracks.sum_Z[itrack], vertices.zvtx[ivertex], beta);
       auto mult_res = track_z - vertices.zvtx[ivertex];
       vertices.exp_arg[ivertex] = botrack_dz2 * (mult_res * mult_res);
     }
@@ -1051,7 +1051,7 @@ vector<TransientVertex> DAClusterizerInZ_vect::vertices(const vector<reco::Trans
 #endif
 
   // select significant tracks and use a TransientVertex as a container
-
+  rho0 = y.getSize() > 1 ? 1. / y.getSize() : 1.; // Once vertex are purged, this might be more accurate
   set_vtx_range(beta, tks, y);
   const unsigned int nv = y.getSize();
   //std::cout << "ivtxO,z" << std::endl;
@@ -1102,6 +1102,8 @@ vector<TransientVertex> DAClusterizerInZ_vect::vertices(const vector<reco::Trans
       double p = y.rho[k] * y.exp[k] * invZ;
       if (p > mintrkweight_) {
         // assign  track i -> vertex k (hard, mintrkweight_ should be >= 0.5 here
+        //printf("Track %i with z %1.10f assigned to vertex %i with z %1.10f\n", i, tks.zpca[i], k, y.zvtx[k]);
+
         vtx_track_indices[k].push_back(i);
         break;
       }

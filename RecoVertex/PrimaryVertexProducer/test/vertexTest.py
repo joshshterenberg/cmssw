@@ -22,7 +22,7 @@ process.load('commons_cff')
 options = VarParsing.VarParsing('analysis')
 
 options.register ('n',
-                  90, # default value
+                  -1, # default value
                   VarParsing.VarParsing.multiplicity.singleton, # singleton or list
                   VarParsing.VarParsing.varType.int,          # string, int, or float
                   "n")
@@ -50,7 +50,7 @@ options.parseArguments()
 
 from Configuration.AlCa.GlobalTag import GlobalTag
 
-process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic_T21', '')
+process.GlobalTag = GlobalTag(process.GlobalTag, '110X_mcRun4_realistic_v3', '')
 process.MessageLogger.cerr.FwkReport.reportEvery = 1
 
 suff = 'gpu'
@@ -94,10 +94,11 @@ process.maxEvents = cms.untracked.PSet(input = cms.untracked.int32(options.n))
 
 process.source = cms.Source("PoolSource",
 fileNames = cms.untracked.vstring(
-'/store/relval/CMSSW_12_4_0_pre3/RelValTTbar_14TeV/GEN-SIM-RECO/PU_123X_mcRun4_realistic_v11_2026D88PU200-v1/2580000/7781d089-b51a-495a-b1ba-384c15e90749.root'
-#'/store/relval/CMSSW_12_4_0_pre3/RelValZMM_14_HI_2021/GEN-SIM-RECO/123X_mcRun3_2021_realistic_HI_v14-v1/2580000/633b39de-a6cf-45ca-9182-96be30f293fe.root'
-,'/store/relval/CMSSW_12_4_0_pre3/RelValTTbar_14TeV/GEN-SIM-RECO/PU_123X_mcRun4_realistic_v11_2026D88PU200-v1/2580000/f6b68ca4-5b0e-42bb-b1d0-f94480067693.root',
-'/store/relval/CMSSW_12_4_0_pre3/RelValTTbar_14TeV/GEN-SIM-RECO/PU_123X_mcRun4_realistic_v11_2026D88PU200-v1/2580000/876a46e3-477e-4c53-8a4a-c16e7c8dee0b.root'
+'file:/data/user/cericeci/QCD_5/reco_1002.root',
+#'/store/relval/CMSSW_12_4_0_pre3/RelValTTbar_14TeV/GEN-SIM-RECO/PU_123X_mcRun4_realistic_v11_2026D88PU200-v1/2580000/7781d089-b51a-495a-b1ba-384c15e90749.root',
+#'/store/relval/CMSSW_12_4_0_pre3/RelValZMM_14_HI_2021/GEN-SIM-RECO/123X_mcRun3_2021_realistic_HI_v14-v1/2580000/633b39de-a6cf-45ca-9182-96be30f293fe.root',
+#'/store/relval/CMSSW_12_4_0_pre3/RelValTTbar_14TeV/GEN-SIM-RECO/PU_123X_mcRun4_realistic_v11_2026D88PU200-v1/2580000/f6b68ca4-5b0e-42bb-b1d0-f94480067693.root',
+#'/store/relval/CMSSW_12_4_0_pre3/RelValTTbar_14TeV/GEN-SIM-RECO/PU_123X_mcRun4_realistic_v11_2026D88PU200-v1/2580000/876a46e3-477e-4c53-8a4a-c16e7c8dee0b.root'
 #'file:aca7b050-5990-4576-a9ee-f41ac82e5b86.root'
 ),
 skipEvents=cms.untracked.uint32(0),
@@ -136,8 +137,8 @@ if options.timing:
 
 
 if options.gpu:
-    process.vertex = offlinePrimaryVerticesDumbFitter.clone()
-    #process.vertex = offlinePrimaryVerticesCUDA.clone()
+    #process.vertex = offlinePrimaryVerticesDumbFitter.clone()
+    process.vertex = offlinePrimaryVerticesCUDA.clone()
 else:
     process.vertex = offlinePrimaryVertices.clone()
 

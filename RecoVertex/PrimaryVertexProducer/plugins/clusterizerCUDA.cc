@@ -327,8 +327,9 @@ __device__ __forceinline__ void outlierRejectionKernel(unsigned int ntracks, Tra
   double rho0 = 0.0;
   if (params.dzCutOff > 0){
     rho0 = vertices->nTrueVertex(blockIdx.x) > 1 ? 1./vertices->nTrueVertex(blockIdx.x) : 1.;
-    for (unsigned int a = 0; a < 5 ; a++){ //Can't be parallelized in any reasonable way
-      update(ntracks, tracks, vertices, params, osumtkwt, beta, a*rho0/5., false);
+    for (unsigned int rhoindex = 0; rhoindex < 5 ; rhoindex++){ //Can't be parallelized in any reasonable way
+      //if (threadIdx.x == 0){ printf("Adiabatic turn on at a=%i \n", rhoindex); }
+      update(ntracks, tracks, vertices, params, osumtkwt, beta, rhoindex*rho0/5., false);
       __syncthreads();
     }
   }
@@ -360,6 +361,7 @@ __device__ __forceinline__ void outlierRejectionKernel(unsigned int ntracks, Tra
   double betapurge = 1./params.Tpurge;
 //  if (0==threadIdx.x)  printf("T loop begin\n\n");
   while (((*beta)) < betapurge){
+    __syncthreads();
 //    if (0==threadIdx.x)  printf("Loop for beta: %f\n\n", (float) (*beta));
     if (0==threadIdx.x)  ((*beta)) = std::min(((*beta))/params.coolingFactor, betapurge);
     __syncthreads();
@@ -786,6 +788,7 @@ __global__ void resortVerticesAndAssign(TrackForPV::TrackForPVSoA* tracks, Track
 
   double mintrkweight_ = 0.5;
   double rho0 = vertices->nTrueVertex(0) > 1 ? 1./vertices->nTrueVertex(0) : 1.;
+  //rho0 = 0.2000000000;
   double z_sum_init = rho0*exp(-(*beta)*params.dzCutOff*params.dzCutOff);
   //start = clock(); 
   //std::vector<std::vector<unsigned int> > vtx_track_indices(vertices->nTrueVertex);
@@ -811,7 +814,8 @@ __global__ void resortVerticesAndAssign(TrackForPV::TrackForPVSoA* tracks, Track
     double invZ = sum_Z > 1e-100 ? 1. / sum_Z : 0.0;
     for (auto k = kmin; k < kmax; k++) {
       float v_exp = exp(-(*beta) * std::pow( tracks->z(itrack) - vertices->z(vertices->order(k)), 2) * tracks->dz2(itrack)) ;
-      float p = vertices->rho(vertices->order(k)) * v_exp * invZ; 
+      float p = vertices->rho(vertices->order(k)) * v_exp * invZ;
+      //printf("Track %i, kmin %i, kmax %i, k %i, p %1.10f \n", itrack, kmin, kmax,k,p);
       //float p = v_exp * invZ; 
       //if (p > p_max && p > mintrkweight_) {
       if (p > p_max && p > mintrkweight_) {
@@ -824,7 +828,7 @@ __global__ void resortVerticesAndAssign(TrackForPV::TrackForPVSoA* tracks, Track
     //associationIvertex[iO] = iMax;
     tracks->kmin(itrack) = iMax; 
     tracks->kmax(itrack) = iMax+1; 
-
+//    printf("Track %i with z %1.10f assigned to vertex %i with z %1.10f\n", itrack, tracks->z(itrack), iMax, vertices->z(vertices->order(iMax)));
 //    double sum_Z = z_sum_init;
 //
 //    for (auto k = kmin; k < kmax; k++) {
@@ -904,7 +908,8 @@ if (threadIdx.x == 0){
     printf("VERTICES: start remerging\n");
   }
 #endif
-}
+  }
+  __syncthreads();
   remergeTracksKernel(ntracks, tracks, vertices, params, osumtkwt, _beta); 
   __syncthreads();
 //  if (threadIdx.x == 0 && blockIdx.x == 0)  printf("\n\nFinished remerge\n");
@@ -915,7 +920,8 @@ if (threadIdx.x == 0){
     printf("VERTICES: start resplitting\n");
   }
 #endif
-}
+  }
+  __syncthreads();
   resplitTracksKernel(ntracks, tracks, vertices, params, osumtkwt, _beta);
   __syncthreads();
 //  if (threadIdx.x == 0 && blockIdx.x == 0)  printf("\n\nFinished resplit\n");
@@ -927,6 +933,7 @@ if (threadIdx.x == 0){
   }
 #endif
 }
+  __syncthreads();
   outlierRejectionKernel(ntracks, tracks, vertices, params, osumtkwt, _beta);
   __syncthreads();
   //if (threadIdx.x == 0) printf("Beta at the end for block %d is %f\n", blockIdx.x, rbeta[0]);
@@ -1102,7 +1109,7 @@ void bigKernelWrapper(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, T
   */
   // auto GPUbeta = cms::cuda::make_device_unique<double[1]>(1, cudaStreamDefault);                                         // 1/T, to be kept across iterations
 
-//  overlapTracks<<<1,1,0,stream>>>(tracks, blockSize, gridSize);
+  overlapTracks<<<1,1,0,stream>>>(tracks, blockSize, gridSize);
 //  cudaCheck(cudaGetLastError());
   
   bigKernel<<<gridSize, blockSize,blockSize,stream>>>(ntracks, tracks, vertices, params, osumtkwt, beta);

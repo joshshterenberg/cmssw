@@ -168,7 +168,7 @@ __global__ void trackSorterKernel(unsigned int ntracks, TrackForPV::TrackForPVSo
       __shared__ uint16_t sws[5120];
 
       unsigned int const& nvFinal = tracks->nTrueTracks;
-      #ifdef __CUDA_ARCH__
+      /*#ifdef __CUDA_ARCH__
       radixSort<float, 2>(tracksZ, trueTracksOrder, sws, nvFinal);
       #else
       if (threadIdx.x == 0 && blockIdx.x == 0) {
@@ -178,12 +178,13 @@ __global__ void trackSorterKernel(unsigned int ntracks, TrackForPV::TrackForPVSo
                 printf("itrack %d, itrackO %d, z %f\n", itrackO, itrack, z);
             } 
        }
-      #endif
+      #endif*/
+
       __syncthreads();
       /*
        */
       for (unsigned int itrack=firstElement; itrack<tracks->nTrueTracks; itrack+=gridSize) {
-            tracks->order(itrack) = trueTracksOrder[itrack];
+            tracks->order(itrack) = itrack; // tracks->order(itrack) = trueTracksOrder[itrack];
       }
        __syncthreads();
   } else {

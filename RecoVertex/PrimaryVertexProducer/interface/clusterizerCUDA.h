@@ -109,7 +109,7 @@ namespace clusterizerCUDA {
             //if (vertices->order(ivertexO) == -1) continue;
         unsigned int ivertex = vertices->order(ivertexO); // ivertex translates from ordered vertex to real vertex positions
         double mult_res = tracks->z(itrack) - vertices->z(ivertex);
-//        //  printf("Track %i, vertex %i, track_z %1.10f, track_dz2 %1.10f, track_sum_Z: %1.10f, vertex_z: %1.10f, beta: %1.10f\n", itrack, ivertexO, tracks->z(itrack), tracks->dz2(itrack), tracks->sum_Z(itrack), vertices->z(ivertexO), beta);
+        //printf("Track %i, vertex %i, track_z %1.10f, track_dz2 %1.10f, track_weight: %1.10f, track_sum_Z: %1.10f, vertex_z: %1.10f, beta: %1.10f\n", itrack, ivertexO, tracks->z(itrack), tracks->dz2(itrack), tracks->weight(itrack), tracks->sum_Z(itrack), vertices->z(ivertexO), (*beta));
         tracks->vert_exparg(itrack)(ivertex) = botrack_dz2* (mult_res * mult_res);
         tracks->vert_exp(itrack)(ivertex)    = exp(tracks->vert_exparg(itrack)(ivertex)); // exp is defined as device function in cuda
         tracks->sum_Z(itrack) += vertices->rho(ivertex)*tracks->vert_exp(itrack)(ivertex);
@@ -119,7 +119,7 @@ namespace clusterizerCUDA {
  //         stop2 = clock();
  //     }
       if(not(std::isfinite(tracks->sum_Z(itrack)))) tracks->sum_Z(itrack) = 0; // Just in case something diverges
-      if(tracks->sum_Z(itrack) > 0){ // If partition > 0, then it is non-trivially assigned to a vertex and we need to compute stuff
+      if(tracks->sum_Z(itrack) > 1e-100){ // If partition > 0, then it is non-trivially assigned to a vertex and we need to compute stuff
         double sumw = tracks->weight(itrack)/tracks->sum_Z(itrack);
         for (unsigned int ivertexO = tracks->kmin(itrack) ; ivertexO < tracks->kmax(itrack) ; ++ivertexO){
             //if (vertices->order(ivertexO) == -1) continue;
@@ -200,7 +200,7 @@ namespace clusterizerCUDA {
     if (DEBUGLEVEL == -5){
       printf("UPDATE: Vertex ordering: \n");
       for (unsigned int ivertex = 0; ivertex < 512; ivertex ++){
-        printf("%i, ", vertices->order(ivertex);
+        printf("%i, ", vertices->order(ivertex));
       }
       printf("\n");
     }
@@ -299,9 +299,9 @@ namespace clusterizerCUDA {
       }
 
     #ifdef DEBUG
-    if (DEBUGLEVEL == -5){
-      printf("SET_VTX_RANGE, track %i, kmin %i, kmax %i\n", itrack, tracks->kmin(itrack), tracks->kmax(itrack));
-    }
+    //if (DEBUGLEVEL == -5){
+    //  printf("SET_VTX_RANGE, track %i, kmin %i, kmax %i\n", itrack, tracks->kmin(itrack), tracks->kmax(itrack));
+    //}
     #endif
       // printf("%i vtx_range is finished\n", threadIdx.x);
 
@@ -334,8 +334,10 @@ namespace clusterizerCUDA {
       delta_max = params.delta_lowT / sqrt(std::max((*beta), 1.0));
     }
 #ifdef DEBUG
+  if (threadIdx.x == 0){
   if (DEBUGLEVEL == -5){
     printf("THERMALIZE: Will now thermalize at beta=%1.10f, rho0=%1.10f, delta_max=%1.10f\n", (*beta), rho0, delta_max);
+  }
   }
 #endif
 
@@ -417,7 +419,7 @@ namespace clusterizerCUDA {
     if (DEBUGLEVEL == -5){
       printf("MERGE START: Vertex ordering: \n");
       for (unsigned int ivertex = 0; ivertex < 512; ivertex ++){
-        printf("%i, ", vertices->order(ivertex);
+        printf("%i, ", vertices->order(ivertex));
       }
       printf("\n");
     }
@@ -486,7 +488,7 @@ namespace clusterizerCUDA {
 
             vertices->isGood(ivertex) = false; // Delete it!
             double rho =  vertices->rho(ivertex) + vertices->rho(ivertexnext);
-            if (rho > 1e-100){ 
+            if (rho > 1.e-100){ 
               vertices->z(ivertexnext) = (vertices->rho(ivertex) * vertices->z(ivertex) + vertices->rho(ivertexnext) * vertices->z(ivertexnext)) / rho;
             } 
             else{
@@ -536,7 +538,7 @@ namespace clusterizerCUDA {
     if (DEBUGLEVEL == -5){
       printf("MERGE FINISH: Vertex ordering: \n");
       for (unsigned int ivertex = 0; ivertex < 512; ivertex ++){
-        printf("%i, ", vertices->order(ivertex);
+        printf("%i, ", vertices->order(ivertex));
       }
       printf("\n");
     }
@@ -556,7 +558,7 @@ namespace clusterizerCUDA {
     if (DEBUGLEVEL == -5){
       printf("SPLIT START: Vertex ordering: \n");
       for (unsigned int ivertex = 0; ivertex < 512; ivertex ++){
-        printf("%i, ", vertices->order(ivertex);
+        printf("%i, ", vertices->order(ivertex));
       }
       printf("\n");
     }
@@ -819,7 +821,7 @@ if (threadIdx.x == 0){
     if (DEBUGLEVEL == -5){
       printf("SPLIT FINISH: Vertex ordering: \n");
       for (unsigned int ivertex = 0; ivertex < 512; ivertex ++){
-        printf("%i, ", vertices->order(ivertex);
+        printf("%i, ", vertices->order(ivertex));
       }
       printf("\n");
     }
@@ -911,6 +913,7 @@ if (threadIdx.x == 0){
     unsigned int k0 = maxVerticesPerBlock * blockIdx.x + nvprev;
     for (unsigned int ivertexO =  maxVerticesPerBlock * blockIdx.x  ; ivertexO <  maxVerticesPerBlock * blockIdx.x + nvprev ; ivertexO++){
       unsigned int ivertex = vertices->order(ivertexO);
+
       if ((vertices->aux2(ivertex) < nunique_min) && (vertices->aux1(ivertex) < sumpmin)){
         // Will purge the worst one
         sumpmin = vertices->aux1(ivertex);

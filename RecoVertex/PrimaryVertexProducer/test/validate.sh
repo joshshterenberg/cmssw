@@ -14,5 +14,5 @@ rm -r ~/plots/
 
 makeTrackValidationPlots.py gpu.root cpu.root --png --extended
 
-cp -r plots/ /nfshome0/gpizzati/
+#cp -r plots/ /nfshome0/gpizzati/
 

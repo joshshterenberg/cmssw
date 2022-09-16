@@ -251,11 +251,12 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
   for (unsigned int idx=0; idx < t_tks.size() ; idx++){
     double significance		= t_tks.at(idx).stateAtBeamLine().transverseImpactParameter().significance();
     double dxy2		= t_tks.at(idx).stateAtBeamLine().transverseImpactParameter().error()*t_tks.at(idx).stateAtBeamLine().transverseImpactParameter().error();
-    double dz2		= t_tks.at(idx).track().dzError()*t_tks.at(idx).track().dzError();
+    double dz2		= std::pow(t_tks.at(idx).track().dzError(),2);
     double pAtIP		= t_tks.at(idx).impactPointState().globalMomentum().transverse();
     double pxAtPCA		= t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().momentum().x();
     double pyAtPCA		= t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().momentum().y();
     double pzAtPCA		= t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().momentum().z();
+    double pt2AtPCA             = t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().momentum().perp2();
     double bx		= t_tks.at(idx).stateAtBeamLine().beamSpot().BeamWidthX();
     double by		= t_tks.at(idx).stateAtBeamLine().beamSpot().BeamWidthY();
     double z		= t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().position().z();
@@ -294,8 +295,8 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
         else{ // Get dz2 for the track
           // dz2 is zerror^2 + (bx*px + by*py)^2*pz^2/(pt^4) + vertex_size^2
           dz2 = dz2 
-                         + (bx*bx*pxAtPCA*pxAtPCA + by*by*pyAtPCA*pyAtPCA)* pzAtPCA*pzAtPCA/(( pxAtPCA*pxAtPCA + pyAtPCA*pyAtPCA )* ( pxAtPCA*pxAtPCA + pyAtPCA*pyAtPCA)) 
-                         + fParams.vertexSize*fParams.vertexSize; // TODO:: For sure ways to optimize this
+                         + (std::pow(bx*pxAtPCA,2)+ std::pow(by*pyAtPCA,2))* std::pow(pzAtPCA,2)/(std::pow(pt2AtPCA,2)) 
+                         + std::pow(fParams.vertexSize,2); // TODO:: For sure ways to optimize this
           dz2 = 1./dz2;
           if (not(std::isfinite(dz2)) || dz2< std::numeric_limits<double>::min()){ // Bad track dz2 is taken out
             isGood = false;

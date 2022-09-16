@@ -6,7 +6,7 @@ offlinePrimaryVertices = cms.EDProducer(
     "PrimaryVertexProducerCUDA",
 
     verbose = cms.untracked.bool(False),
-    TrackLabel = cms.InputTag("generalTracks"),
+    TrackLabel = cms.InputTag("generalTracks","","RECO"),
     beamSpotLabel = cms.InputTag("offlineBeamSpot"),
     TkFilterParameters = cms.PSet(
         algorithm=cms.string('filter'),
