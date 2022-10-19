@@ -13,7 +13,8 @@ from RecoJets.JetProducers.TracksForJets_cff import *
 from CommonTools.RecoAlgos.sortedPrimaryVertices_cfi import *
 from RecoJets.JetProducers.caloJetsForTrk_cff import *
 
-unsortedOfflinePrimaryVertices=offlinePrimaryVertices.clone()
+unsortedOfflinePrimaryVertices=offlinePrimaryVertices.clone()                                                                                                                                
+        
 offlinePrimaryVertices=sortedPrimaryVertices.clone(
     vertices="unsortedOfflinePrimaryVertices",
     particles="trackRefsForJetsBeforeSorting"

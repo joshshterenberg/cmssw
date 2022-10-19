@@ -23,14 +23,20 @@ DA_vectParameters = cms.PSet(
         )
 )
 
-from Configuration.ProcessModifiers.weightedVertexing_cff import weightedVertexing
-weightedVertexing.toModify(DA_vectParameters,
+from Configuration.ProcessModifiers.vertexInBlocks_cff import vertexInBlocks
+vertexInBlocks.toModify(DA_vectParameters,
     TkDAClusParameters = dict(
     runInBlocks = True,
-    block_size = 512,
+    block_size = 128,
     overlap_frac = 0.5
     )
 )
+
+from Configuration.Eras.Modifier_phase2_tracker_cff import phase2_tracker
+(phase2_tracker & vertexInBlocks).toModify(DA_vectParameters,
+        block_size = 512,
+        overlap_frac = 0.5)
+
 from Configuration.Eras.Modifier_highBetaStar_2018_cff import highBetaStar_2018
 highBetaStar_2018.toModify(DA_vectParameters,
      TkDAClusParameters = dict(
