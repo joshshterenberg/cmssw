@@ -1,5 +1,13 @@
-#ifndef RecoVertex_PrimaryVertexProducer_WeightedMeanFitter_h
-#define RecoVertex_PrimaryVertexProducer_WeightedMeanFitter_h
+#ifndef RecoVertex_PrimaryVertexProducer_WeightedMeanFitterCUDA_h
+#define RecoVertex_PrimaryVertexProducer_WeightedMeanFitterCUDA_h
+
+// CUDA include files
+#include <cuda_runtime.h>
+
+// CMSSW include files
+#include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
+#include "RecoVertex/PrimaryVertexProducer/interface/WeightedMeanFitterCUDA.h"
+#include <stdio.h>
 
 #include <vector>
 #include <math.h> // JS_EDIT
@@ -7,7 +15,10 @@
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
 #include "DataFormats/BeamSpot/interface/BeamSpot.h"
 
-namespace WeightedMeanFitter {
+//JS_EDIT define global functions for cuda
+
+
+namespace WeightedMeanFitterCUDA {
 
   constexpr float startError = 20.0;
   constexpr float precision = 1e-24;
@@ -97,17 +108,30 @@ namespace WeightedMeanFitter {
 
               xpull = 0.;
 
-              if ( std::pow(p.first.x() - old_x, 2) / (wx + err_x) < mu*mu
-                && std::pow(p.first.y() - old_y, 2) / (wx + err_x) < mu*mu
+              if ( std::pow(p.first.x() - old_x, 2) / (wx + err_x) < mu*mu 
+                && std::pow(p.first.y() - old_y, 2) / (wx + err_x) < mu*mu 
                 && std::pow(p.first.z() - old_z, 2) / (wz + err_z) < mu*mu) xpull = 1.;
 
-              //// JS_EDIT
+              //// JS_EDIT 
               //// gaussian weighting
               if (xpull == 1) {
                   float coeff = std::pow(2/(M_PI*(wz+err_z)),0.25);
                   float func = std::exp(-1*std::pow(p.first.z() - old_z, 2) / (wz + err_z));
                   xpull = coeff * func; //creates the idea of "influence". take off coeff for non-normalized
               }
+              //// quadratic weighting
+              //if (xpull == 1) {
+              //    float coeff = std::pow(15/(16*std::pow(wz+err_z,5)),0.5);
+              //    float func = std::pow(wz+err_z,2) - std::pow(p.first.z(),2);
+              //    xpull = coeff * func;
+              //}
+              //// linear weighting
+              //if (xpull == 1) {
+              //    float coeff = std::pow(3/(2*std::pow(wz+err_z,3)),0.5);
+              //    float func = w_z+err_z - std::abs(p.first.z());
+              //    xpull = coeff * func;
+              //}
+              ////
 
               ndof_x += xpull;
 

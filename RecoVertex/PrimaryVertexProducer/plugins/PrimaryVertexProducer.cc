@@ -15,6 +15,12 @@
 
 #include "RecoVertex/VertexTools/interface/GeometricAnnealing.h"
 
+#include "HeterogeneousCore/CUDAUtilities/interface/host_unique_ptr.h"
+#include "HeterogeneousCore/CUDAUtilities/interface/device_unique_ptr.h"
+#include "HeterogeneousCore/CUDAUtilities/interface/host_noncached_unique_ptr.h"
+
+#include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
+
 PrimaryVertexProducer::PrimaryVertexProducer(const edm::ParameterSet& conf)
     : theTTBToken(esConsumes(edm::ESInputTag("", "TransientTrackBuilder"))), theConfig(conf) {
   fVerbose = conf.getUntrackedParameter<bool>("verbose", false);
@@ -237,9 +243,9 @@ void PrimaryVertexProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
                    std::pair<GlobalPoint, GlobalPoint> p2(p, err);
                    points.push_back(p2);
             }
+            v = WeightedMeanFitter::weightedMeanOutlierRejectionBeamSpot(points, *iclus, beamSpot);
+            if ((v.positionError().matrix())(2,2) != (WeightedMeanFitter::startError*WeightedMeanFitter::startError)) pvs.push_back(v);
 
-           v = WeightedMeanFitter::weightedMeanOutlierRejectionBeamSpot(points, *iclus, beamSpot);
-           if ((v.positionError().matrix())(2,2) != (WeightedMeanFitter::startError*WeightedMeanFitter::startError)) pvs.push_back(v);
         }
         else if (!(algorithm->useBeamConstraint) && (iclus->size() > 1)) {
            for (const auto& itrack : *iclus){
@@ -248,9 +254,9 @@ void PrimaryVertexProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
                    std::pair<GlobalPoint, GlobalPoint> p2(p, err);
                    points.push_back(p2);
            }
-
            v = WeightedMeanFitter::weightedMeanOutlierRejection(points, *iclus);
            if ((v.positionError().matrix())(2,2) != (WeightedMeanFitter::startError*WeightedMeanFitter::startError)) pvs.push_back(v); //FIX with constants
+
         }
       }
       else

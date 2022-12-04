@@ -1,0 +1,101 @@
+
+
+Things that need to be done:
+
+	for loop in weightedMeanOutlierRejection()
+		move p to device
+		when you call, calc vals and add value to x
+		don't need to __syncthreads() i think bc it doesn't matter how you add
+		add to x,y,z,s_wx,s_wz
+
+	for loop in while loop in ^^^
+		bit more complicated innit
+		but I think all this is doing is editing xyz and s_wx,s_wz
+		yeah bc everything else is internal variables so I'll use the same func
+
+	wait actually both of these do exactly the same thing the first loop is just the init
+	and everything is same for BeamSpot version just changing how internal vars are
+	same for VarianceAsError
+
+	ok so we got a plan homeboy
+	its all just parallel reduction
+	shoutout to Mark Harris
+
+
+	ok the strat is to address as efficiently as possible
+		+ first add during load
+		+ sequential addressing
+		+ bank conflict resolution
+	option 5: unroll the last warp
+	option 6: completely unroll the warps
+	option 7: multiple adds per thread (done!)
+
+Next step:
+	try to do that while loop too
+	parallelize by cluster instead of by track, might be faster
+		maybe do both?
+
+
+
+
+//check it out
+//call this function depending on the output
+//for i in x,y,z: (y == x for the p values for some reason)
+//	input[a] = p.first.i() * (p.second.i() <= precision ? 
+//					1. / std::pow(precision,2) : 
+//					1. / std::pow(p.second.i(),2));
+//for i in s_wx, s_wz: input[a] = thing after the * 
+//
+
+//reversed loop & threadId indexing, sequential addressing, first add done manually to prevent idle
+__global__ void reduce(int *input, int *output, int N) {
+    extern __shared__ double sdata[];
+
+    //multiple adds / thread
+    unsigned int tid = threadIdx.x;
+    unsigned int idx = blockIdx.x * (blockSize*2) + threadIdx.x;
+    unsigned int grid_size = blockSize * 2 * gridDim.x;
+    sdata[tid] = 0;
+    while (idx < N) {
+        sdata[tid] += input[idx] + input[idx+blockSize];
+        idx += gridSize;
+    }
+    __syncthreads();
+
+    //unsigned int tid = threadIdx.x;
+    //unsigned int idx = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
+    //sdata[tid] = input[idx] + input[idx + blockDim.x];
+    //__syncthreads();
+
+    for (unsigned int i = blockDim.x / 2; i > 0; i>>=1) {
+        if (tid < i) sdata[tid] += sdata[tid + i];
+        __syncthreads();
+    }
+
+    if (tid == 0) output = sdata[0]; //1 sum per block
+}
+
+dim3 num_blocks = 1, block_size = 64;
+
+double wx = p.second.x() <= precision ? 1. / std::pow(precision,2) : 1. / std::pow(p.second.x(),2);
+double wz = p.second.z() <= precision ? 1. / std::pow(precision,2) : 1. / std::pow(p.second.z(),2);
+
+cudaMalloc(&p, memSize);
+...
+
+cudaMemcpy(p, dp, memSize, cudaMemcpyHostToDevice);
+...
+
+//NVIDIA TESLA T4, NVIDIA A100
+
+reduce<<<num_blocks, block_size>>>(p.first.x() * wx, x, N);
+reduce<<<num_blocks, block_size>>>(p.first.y() * wx, y, N);
+reduce<<<num_blocks, block_size>>>(p.first.z() * wz, z, N);
+reduce<<<num_blocks, block_size>>>(wx, s_wx, N);
+reduce<<<num_blocks, block_size>>>(wz, s_wz, N);
+
+cudaMemcpy(dp, d, memSize, cudaMemcpyDeviceToHost);
+...
+
+cudaFree(p);
+...

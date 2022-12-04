@@ -1,9 +1,9 @@
 // -*- C++ -*-
 //
-// Package:    PrimaryVertexProducer
-// Class:      PrimaryVertexProducer
+// Package:    PrimaryVertexProducerCUDA
+// Class:      PrimaryVertexProducerCUDA
 //
-/**\class PrimaryVertexProducer PrimaryVertexProducer.cc RecoVertex/PrimaryVertexProducer/src/PrimaryVertexProducer.cc
+/**\class PrimaryVertexProducerCUDA PrimaryVertexProducerCUDA.cc RecoVertex/PrimaryVertexProducer/src/PrimaryVertexProducerCUDA.cc
 
  Description: steers tracker primary vertex reconstruction and storage
 
@@ -51,14 +51,19 @@
 #include "RecoVertex/PrimaryVertexProducer/interface/VertexHigherPtSquared.h"
 #include "RecoVertex/VertexTools/interface/VertexCompatibleWithBeam.h"
 #include "DataFormats/Common/interface/ValueMap.h"
+#include "HeterogeneousCore/CUDAUtilities/interface/device_unique_ptr.h"
+#include "HeterogeneousCore/CUDAUtilities/interface/host_noncached_unique_ptr.h"
+#include "CUDADataFormats/Track/interface/TrackForPVHeterogeneous.h"
+#include "RecoVertex/PrimaryVertexProducer/interface/trackFilterCUDA.h"
+#include "RecoVertex/PrimaryVertexProducer/interface/clusterizerCUDA.h"
 //
 // class declaration
 //
 
-class PrimaryVertexProducer : public edm::stream::EDProducer<> {
+class PrimaryVertexProducerCUDA : public edm::stream::EDProducer<> {
 public:
-  PrimaryVertexProducer(const edm::ParameterSet&);
-  ~PrimaryVertexProducer() override;
+  PrimaryVertexProducerCUDA(const edm::ParameterSet&);
+  ~PrimaryVertexProducerCUDA() override;
 
   void produce(edm::Event&, const edm::EventSetup&) override;
 
@@ -98,4 +103,7 @@ private:
 
   bool f4D;
   bool weightFit;
+  bool onGPU_;
+  trackFilterCUDA::filterParameters fParams;
+  clusterizerCUDA::clusterParameters cParams;
 };
