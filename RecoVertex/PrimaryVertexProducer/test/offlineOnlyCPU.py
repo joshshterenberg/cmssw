@@ -28,7 +28,7 @@ import FWCore.ParameterSet.VarParsing as VarParsing
 options = VarParsing.VarParsing ('analysis')
 
 # setup any defaults you want
-options.outputFile = 'output.root'
+options.outputFile = 'output_cpu.root'
 options.inputFiles = ['input.root']
 options.maxEvents = -1 # -1 means all events
 
