@@ -28,6 +28,7 @@ PrimaryVertexProducerCUDA::PrimaryVertexProducerCUDA(const edm::ParameterSet& co
   trkToken = consumes<reco::TrackCollection>(conf.getParameter<edm::InputTag>("TrackLabel"));
   bsToken = consumes<reco::BeamSpot>(conf.getParameter<edm::InputTag>("beamSpotLabel"));
   f4D = false;
+  weightFit = false;
 
   // select and configure the track clusterizer
   std::string clusteringAlgorithm =
@@ -71,6 +72,10 @@ PrimaryVertexProducerCUDA::PrimaryVertexProducerCUDA(const edm::ParameterSet& co
         algorithm.fitter = new KalmanVertexFitter();
       } else if (fitterAlgorithm == "AdaptiveVertexFitter") {
         algorithm.fitter = new AdaptiveVertexFitter(GeometricAnnealing(algoconf->getParameter<double>("chi2cutoff")));
+      } else if (fitterAlgorithm == "WeightedMeanFitter") {
+        algorithm.fitter = nullptr;
+        //std::cout << "got here!";
+        weightFit = true;
       } else {
         throw VertexException("PrimaryVertexProducerCUDA: unknown algorithm: " + fitterAlgorithm);
       }
@@ -437,6 +442,18 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
     reco::VertexCollection& vColl = (*result);
 
     std::vector<TransientVertex> pvs;
+
+    //JS_EDIT: outsource cluster loop to CUDA file.
+    fitterCUDA::algo algorithm_for_fitter;
+    algorithm_for_fitter.fitter = (*algorithm).fitter;
+    algorithm_for_fitter.vertexSelector = (*algorithm).vertexSelector;
+    algorithm_for_fitter.label = (*algorithm).label;
+    algorithm_for_fitter.useBeamConstraint = (*algorithm).useBeamConstraint;
+    algorithm_for_fitter.minNdof = (*algorithm).minNdof;
+
+    pvs = fitterCUDA::wrapper(algorithm_for_fitter, std::move(clusters), beamSpot, beamVertexState, f4D, validBS, weightFit, fVerbose);
+
+    /*
     for (std::vector<std::vector<reco::TransientTrack> >::const_iterator iclus = clusters.begin();
          iclus != clusters.end();
          iclus++) {
@@ -462,28 +479,40 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
       }
 
       TransientVertex v;
-      if (algorithm->useBeamConstraint && validBS && (iclus->size() > 1)) {
-        v = algorithm->fitter->vertex(*iclus, beamSpot);
-      } else if (!(algorithm->useBeamConstraint) && (iclus->size() > 1)) {
-        v = algorithm->fitter->vertex(*iclus);
-      }  // else: no fit ==> v.isValid()=False
-     /*
-     float x=0,y=0,z=0, wxy=0, wz=0;
-     for (const auto& itrack : *iclus){ 
-     //std::vector<reco::TransientTrack>::const_iterator itrack = iclus.begin(); itrack!= iclus.end(); itrack++) {
-            x += itrack.impactPointState().globalPosition().x() * pow(itrack.track().dxyError(),2);
-            y += itrack.impactPointState().globalPosition().y() * pow(itrack.track().dxyError(),2);
-            wxy += pow(itrack.track().dxyError(),2);
-            z += itrack.impactPointState().globalPosition().z() * pow(itrack.track().dzError(),2);
-     }
-     x /= (*iclus).size() * wxy;     
-     y /= (*iclus).size() * wxy;     
-     z /= (*iclus).size() * wz;     
-     TransientVertex v2(GlobalPoint(x,y,z), v.positionError(), (*iclus), v.totalChiSquared());
-     v = v2;
-      */
-     //std::cout << v.position().x() << ", " << x << "\t" <<  v.position().y() << ", " << y << "\t" << v.position().z() << ", " << z << "\t" << std::endl; 
-     
+      if (!weightFit) {
+        if (algorithm->useBeamConstraint && validBS && (iclus->size() > 1)) {
+          v = algorithm->fitter->vertex(*iclus, beamSpot);
+        } else if (!(algorithm->useBeamConstraint) && (iclus->size() > 1)) {
+          v = algorithm->fitter->vertex(*iclus);
+        }
+      } else if (weightFit) {
+        //std::cout << "\n\ngot here!!!!!\n\n";
+        std::vector<std::pair<GlobalPoint, GlobalPoint>> points;
+        if (algorithm->useBeamConstraint && validBS && (iclus->size() > 1)) {
+            for (const auto& itrack : *iclus){
+                   GlobalPoint p =  itrack.stateAtBeamLine().trackStateAtPCA().position();
+                   GlobalPoint err(itrack.stateAtBeamLine().transverseImpactParameter().error(), itrack.stateAtBeamLine().transverseImpactParameter().error(), itrack.track().dzError());
+                   std::pair<GlobalPoint, GlobalPoint> p2(p, err);
+                   points.push_back(p2);
+            }
+            //std::cout << "\ngoing into weightedmeanfitter\n";
+            v = WeightedMeanFitter::weightedMeanOutlierRejectionBeamSpot(points, *iclus, beamSpot);
+            if ((v.positionError().matrix())(2,2) != (WeightedMeanFitter::startError*WeightedMeanFitter::startError)) pvs.push_back(v);
+
+        }
+        else if (!(algorithm->useBeamConstraint) && (iclus->size() > 1)) {
+           for (const auto& itrack : *iclus){
+                   GlobalPoint p = itrack.impactPointState().globalPosition();
+                   GlobalPoint err(itrack.track().dxyError(), itrack.track().dxyError(), itrack.track().dzError());
+                   std::pair<GlobalPoint, GlobalPoint> p2(p, err);
+                   points.push_back(p2);
+           }
+           //std::cout << "\ngoing into weightedmeanfitter\n";
+           v = WeightedMeanFitter::weightedMeanOutlierRejection(points, *iclus);
+           if ((v.positionError().matrix())(2,2) != (WeightedMeanFitter::startError*WeightedMeanFitter::startError)) pvs.push_back(v); //FIX with constants
+
+        }
+      }
       // 4D vertices: add timing information
       if (f4D and v.isValid()) {
         auto err = v.positionError().matrix4D();
@@ -511,6 +540,7 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
           (!validBS || (*(algorithm->vertexSelector))(v, beamVertexState)))
         pvs.push_back(v);
     }  // end of cluster loop
+    */
 
     if (fVerbose) {
       std::cout << "PrimaryVertexProducerCUDAAlgorithm::vertices  candidates =" << pvs.size() << std::endl;

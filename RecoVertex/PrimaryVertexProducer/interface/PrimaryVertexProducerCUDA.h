@@ -41,6 +41,8 @@
 #include "RecoVertex/PrimaryVertexProducer/interface/HITrackFilterForPVFinding.h"
 #include "RecoVertex/PrimaryVertexProducer/interface/GapClusterizerInZ.h"
 #include "RecoVertex/PrimaryVertexProducer/interface/DAClusterizerInZ.h"
+#include "RecoVertex/PrimaryVertexProducer/interface/WeightedMeanFitter.h"
+//#include "RecoVertex/PrimaryVertexProducer/interface/WeightedMeanFitterCUDA.h"
 #include "RecoVertex/KalmanVertexFit/interface/KalmanVertexFitter.h"
 #include "RecoVertex/AdaptiveVertexFit/interface/AdaptiveVertexFitter.h"
 //#include "RecoVertex/VertexTools/interface/VertexDistanceXY.h"
@@ -54,6 +56,7 @@
 #include "CUDADataFormats/Track/interface/TrackForPVHeterogeneous.h"
 #include "RecoVertex/PrimaryVertexProducer/interface/trackFilterCUDA.h"
 #include "RecoVertex/PrimaryVertexProducer/interface/clusterizerCUDA.h"
+#include "RecoVertex/PrimaryVertexProducer/interface/fitterCUDA.h"
 //
 // class declaration
 //
@@ -70,6 +73,16 @@ public:
   // access to config
   edm::ParameterSet config() const { return theConfig; }
 
+  /*
+  struct algo { //JS_EDIT: moved to public for fitterCUDA
+    VertexFitter<5>* fitter;
+    VertexCompatibleWithBeam* vertexSelector;
+    std::string label;
+    bool useBeamConstraint;
+    double minNdof;
+  };
+  */
+
 private:
   // ----------member data ---------------------------
   const edm::ESGetToken<TransientTrackBuilder, TransientTrackRecord> theTTBToken;
@@ -78,6 +91,7 @@ private:
   TrackClusterizerInZ* theTrackClusterizer;
 
   // vtx fitting algorithms
+
   struct algo {
     VertexFitter<5>* fitter;
     VertexCompatibleWithBeam* vertexSelector;
@@ -85,6 +99,7 @@ private:
     bool useBeamConstraint;
     double minNdof;
   };
+
 
   std::vector<algo> algorithms;
 
@@ -100,6 +115,7 @@ private:
   edm::EDGetTokenT<edm::ValueMap<float> > trkTimeResosToken;
 
   bool f4D;
+  bool weightFit;
   // GPU only stuff
   trackFilterCUDA::filterParameters fParams;
   clusterizerCUDA::clusterParameters cParams;
