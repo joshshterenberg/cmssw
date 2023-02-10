@@ -54,6 +54,9 @@ public:
   eigenSoA::ScalarSoA<double, S> px;
   eigenSoA::ScalarSoA<double, S> py;
   eigenSoA::ScalarSoA<double, S> pz;
+  eigenSoA::ScalarSoA<double, S> x;
+  eigenSoA::ScalarSoA<double, S> y;
+  eigenSoA::ScalarSoA<double, S> z;
   eigenSoA::ScalarSoA<double, S> dxError;
   eigenSoA::ScalarSoA<double, S> dyError;
   eigenSoA::ScalarSoA<double, S> dzError;

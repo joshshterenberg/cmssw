@@ -336,6 +336,17 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
             CPUtracksObject->kmax(nTrueTracks) = 1;
             CPUtracksObject->aux1(nTrueTracks) = 0;
             CPUtracksObject->aux2(nTrueTracks) = 0;
+	    CPUtracksObject->dx(nTrueTracks) =  t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().position().x();
+	    CPUtracksObject->dy(nTrueTracks) =  t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().position().y();
+	    CPUtracksObject->dz(nTrueTracks) =  t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().position().z();
+            CPUtracksObject->dxError(nTrueTracks) =  t_tks.at(idx).stateAtBeamLine().transverseImpactParameter().error();
+            CPUtracksObject->dyError(nTrueTracks) =  t_tks.at(idx).stateAtBeamLine().transverseImpactParameter().error();
+            CPUtracksObject->dzError(nTrueTracks) =  t_tks.at(idx).track().dzError();
+	    CPUtracksObject->px(nTrueTracks) = pxAtPCA;
+            CPUtracksObject->py(nTrueTracks) = pyAtPCA;
+            CPUtracksObject->pz(nTrueTracks) = pzAtPCA;
+
+            
             //std::cout << nTrueTracks << "," << z << "," << weight << "," << dz2 << std::endl;
             nTrueTracks++;
 //            if (z > max_z) max_z = z;
@@ -425,7 +436,10 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
   std::vector<TransientVertex> pv = clusterizerCUDA::vertices(ntracks, CPUtracksObject, CPUverticesObject, cParams, t_tks, CPUbeta.get());
   // clusterize tracks in Z
   std::vector<std::vector<reco::TransientTrack> >&& clusters = clusterizerCUDA::clusterize(pv, cParams);
- // cudaCheck(cudaFree(CPUverticesObject));
+
+  /////////////// ALTERNATIVELY /////////////////
+  clusterizerCUDA::verticesAndClusterize(ntracks, GPUtracksObject, GPUverticesObject, cParams, cudaStreamDefault);
+  // cudaCheck(cudaFree(CPUverticesObject));
  // cudaCheck(cudaFree(CPUtracksObject));
   cudaCheck(cudaDeviceSynchronize());
   ////////////////////////////////////////////////////////////////////
