@@ -89,6 +89,9 @@ public:
   eigenSoA::ScalarSoA<double, S> exparg; // Or this
   eigenSoA::ScalarSoA<int, S> order;
   eigenSoA::ScalarSoA<double, S> z;
+  eigenSoA::ScalarSoA<double, S> x;
+  eigenSoA::ScalarSoA<double, S> y;
+  eigenSoA::ScalarSoA<unsigned int, S> ntracks;
   eigenSoA::ScalarSoA<double, S> rho;
   // Auxiliar vectors
   eigenSoA::ScalarSoA<double, S> aux1;

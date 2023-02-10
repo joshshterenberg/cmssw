@@ -987,6 +987,6 @@ std::vector<TransientVertex> vertices(unsigned int ntracks, TrackForPV::TrackFor
   */
 void dumpTV(TrackForPV::TrackForPVSoA* tracks, TrackForPV::VertexForPVSoA* vertices, unsigned int gridSize);
 void bigKernelWrapper(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, TrackForPV::VertexForPVSoA* vertices, double* beta, double* osumtkwt, clusterParameters params, cudaStream_t stream);
-  
+void verticesAndClusterize(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, TrackForPV::VertexForPVSoA* vertices, clusterParameters params, cudaStream_t stream);  
 }
 #endif
