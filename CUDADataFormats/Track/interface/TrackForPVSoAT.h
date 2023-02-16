@@ -15,7 +15,7 @@ using Vector512d = Eigen::Matrix<double, 1024, 1>;
 template <int32_t S>
 class TrackForPVSoAHeterogeneousT {
 public:
-  static constexpr int32_t stride() { return S; }
+  static constexpr uint32_t stride() { return S; }
 
 public:
   // Track properties needed for the PV selection + fitting
@@ -47,6 +47,16 @@ public:
 
   //eigenSoA::ScalarSoA<int8_t, S> nPixelHits;
   //eigenSoA::ScalarSoA<int8_t, S> nTrackerHits;
+  // For the fitter
+  eigenSoA::ScalarSoA<double, S> dx;
+  eigenSoA::ScalarSoA<double, S> dy;
+  eigenSoA::ScalarSoA<double, S> dz;
+  eigenSoA::ScalarSoA<double, S> px;
+  eigenSoA::ScalarSoA<double, S> py;
+  eigenSoA::ScalarSoA<double, S> pz;
+  eigenSoA::ScalarSoA<double, S> dxError;
+  eigenSoA::ScalarSoA<double, S> dyError;
+  eigenSoA::ScalarSoA<double, S> dzError;
 
   // The track-vertex association matrices
   eigenSoA::MatrixSoA<Vector512d, S> vert_sw;
@@ -64,7 +74,7 @@ public:
 template <int32_t S>
 class VertexForPVSoAHeterogeneousT {
 public:
-  static constexpr int32_t stride() { return S; }
+  static constexpr uint32_t stride() { return S; }
 
 public:
   // Track properties needed for the PV selection + fitting
@@ -79,6 +89,9 @@ public:
   eigenSoA::ScalarSoA<double, S> exparg; // Or this
   eigenSoA::ScalarSoA<int, S> order;
   eigenSoA::ScalarSoA<double, S> z;
+  eigenSoA::ScalarSoA<double, S> x;
+  eigenSoA::ScalarSoA<double, S> y;
+  eigenSoA::ScalarSoA<unsigned int, S> ntracks;
   eigenSoA::ScalarSoA<double, S> rho;
   // Auxiliar vectors
   eigenSoA::ScalarSoA<double, S> aux1;

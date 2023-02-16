@@ -868,6 +868,74 @@ __global__ void resortVerticesAndAssign(TrackForPV::TrackForPVSoA* tracks, Track
 //   }
 }
 
+__global__ void verticesAndClusterizeKernel(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, TrackForPV::VertexForPVSoA* vertices, clusterParameters params){
+
+  size_t firstElement = threadIdx.x + blockIdx.x * blockDim.x; // This is going to be the vertex index
+  size_t gridSize = blockDim.x * gridDim.x;
+
+  // From here it used to be vertices
+
+  for (unsigned int k = firstElement; k < vertices->nTrueVertex(0); k+= gridSize) {
+    unsigned int ivertex = vertices->order(k);
+    vertices->ntracks(ivertex) = 0;
+    for (unsigned int itrackO = 0; itrackO < tracks->nTrueTracks; itrackO+= 1){ 
+      // Check if vertex is valid, i.e. count tracks
+      unsigned int itrack = tracks->order(itrackO);
+      unsigned int ivtxFromTk = tracks->kmin(itrack);
+      if (ivtxFromTk == k){
+	vertices->ntracks(ivertex)++;
+      }
+    }
+    if (not(vertices->ntracks(ivertex) < 1)){
+      vertices->isGood(ivertex) = false; // No longer needed
+      continue; //Skip vertex if it has no tracks
+    }
+    // If we are here, we are going to fit the vertex later, so just in case initialize this
+    vertices->x(ivertex) = 0;
+    vertices->y(ivertex) = 0;
+  }
+  __syncthreads();
+  // From here it used to be clusterize
+  // So we now check whether each vertex is further enough from the previous one
+  for (unsigned int k = firstElement; k < vertices->nTrueVertex(0); k+= gridSize) {
+    int prevVertex = k-1;
+    unsigned int thisVertex = (int) vertices->order(k);
+    if (not(vertices->isGood(thisVertex))){
+      continue;
+    }
+    while (!(vertices->isGood(vertices->order(prevVertex)) && prevVertex >= 0)){
+      // Find the previous vertex that was good
+      prevVertex--;
+    }
+    if ((prevVertex < 0)){ // If it is first, always good
+      vertices->isGood(thisVertex) = true;
+    }
+    else if (std::abs(vertices->z(thisVertex)-vertices->z(prevVertex)) > (2* params.vertexSize)){ //If it is further away enough, it is also good
+      vertices->isGood(thisVertex) = true;
+    }
+    else{
+      vertices->isGood(thisVertex) = false;
+    }
+  }
+  // This is new, basically we have to deal with the order being broken by the invalidation of vertexes and set back again the vertex multiplicity, unfortunately can't be parallelized without competing conditions
+  __syncthreads();
+  if (threadIdx.x == 0 && blockIdx.x == 0){
+    unsigned int k = 0;
+    while (k != vertices->nTrueVertex(0)){
+      unsigned int thisVertex = vertices->order(k);
+      if (vertices->isGood(k)){ // If is good just continue
+        k++;
+      }
+      else{
+        for (unsigned int l = vertices->nTrueVertex(0)-1; l >= k; l --){ //If it is bad, move one position all indexes
+	  vertices->order(l) = vertices->order(l+1);
+	}
+        vertices->nTrueVertex(0)--; // And reduce vertex number by 1
+      }
+    }
+  }
+}
+
 __global__ void bigKernel(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, TrackForPV::VertexForPVSoA* vertices, clusterParameters params, double* osumtkwt, double* beta){
     
   extern __shared__ double rbeta[];
@@ -1141,6 +1209,14 @@ void bigKernelWrapper(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, T
   cudaCheck(cudaGetLastError());
 */
 }
+
+void verticesAndClusterize(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, TrackForPV::VertexForPVSoA* vertices, clusterParameters params, cudaStream_t stream){
+  unsigned int blockSize = 512;
+  unsigned int gridSize  = 1;
+  verticesAndClusterizeKernel<<<gridSize, blockSize,blockSize,stream>>>(ntracks, tracks, vertices, params);
+  cudaCheck(cudaGetLastError());
+}
+
 /*
   // Only on GPUs, of course...
 void initializeWrapper(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, TrackForPV::VertexForPVSoA* vertices, double* beta, double* osumtkwt, clusterParameters params, cudaStream_t stream){
