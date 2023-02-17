@@ -1,6 +1,6 @@
 #ifndef fitterCUDA_h
 #define fitterCUDA_h
-//#include "CUDADataFormats/Track/interface/TrackForPVHeterogeneous.h"
+#include "CUDADataFormats/Track/interface/TrackForPVSoAT.h"
 #include "TrackingTools/TransientTrack/interface/TransientTrack.h"
 #include "RecoVertex/VertexPrimitives/interface/TransientVertex.h"
 //#include "RecoVertex/VertexTools/interface/VertexDistanceXY.h"
@@ -31,15 +31,12 @@ namespace fitterCUDA {
 
 
   //void wrapper(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, cudaStream_t stream);
-  std::vector<TransientVertex> wrapper(
-    algo algorithm,
-    std::vector<std::vector<reco::TransientTrack> >&& clusters,
-    reco::BeamSpot beamSpot,
-    VertexState beamVertexState,
-    bool f4D,
-    bool validBS,
-    bool weightFit,
-    bool fVerbose );
+  void wrapper(
+    unsigned int ntracks,
+    TrackForPV::TrackForPVSoA* GPUtracksObject,
+    TrackForPV::VertexForPVSoA* GPUverticesObject,
+    algo algorithm
+  );
 }
 
 #endif
