@@ -22,29 +22,22 @@
 namespace fitterCUDA {
 
 
-/*
+
 __global__ void fitterKernel(
-    TransientVertex cuda_pvs[],
-    algo algorithm,
-    reco::TransientTrack cuda_clusters[][max_size],
-    reco::BeamSpot beamSpot,
-    VertexState beamVertexState,
-    int clusters_size,
-    int max_size,
-    bool f4D,
-    bool validBS,
-    bool weightFit,
-    bool fVerbose
+    unsigned int ntracks,
+    TrackForPV::TrackForPVSoA* GPUtracksObject,
+    TrackForPV::VertexForPVSoA* GPUverticesObject,
+    algo algorithm
 ){
-
+//      return;
+// RECOMMENT IF NEEDED FROM HERE
       int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
 
 //    for (std::vector<std::vector<reco::reco::TransientTrack> >::const_iterator iclus = clusters.begin();
 //         iclus != clusters.end();
 //         iclus++) {
 
-
+/*
       for (int i = 0; i < clusters_size; i++) {
       double sumwt = 0.;
       double sumwt2 = 0.;
@@ -122,92 +115,89 @@ __global__ void fitterKernel(
           (!validBS || (*(algorithm.vertexSelector))(v, beamVertexState)))
         cuda_pvs[idx] = v; //pvs.push_back(v);
     }
-}
 */
+}
+
 
 #ifdef __CUDACC__
-std::vector<TransientVertex> wrapper(
-    algo algorithm,
-    std::vector<std::vector<reco::TransientTrack> >&& clusters,
-    reco::BeamSpot beamSpot,
-    VertexState beamVertexState,
-    bool f4D,
-    bool validBS,
-    bool weightFit,
-    bool fVerbose ){
-
-    std::cout << "\n\n\n\n\ngot to the wrapper\n";
+void wrapper(
+    unsigned int ntracks,
+    TrackForPV::TrackForPVSoA* GPUtracksObject,
+    TrackForPV::VertexForPVSoA* GPUverticesObject,
+    algo algorithm
+){
 
     //defines grid
     unsigned int blockSize = 1;
     unsigned int gridSize  = 1;
     std::cout << "defined grid size\n";
 
+
+    /*
     //create and allocate all host memory (only pvs needed)
     TransientVertex *cpu_pvs;
-    cpu_pvs = (TransientVertex *) malloc(clusters.size() * sizeof(TransientVertex));
+    TrackForPV::TrackForPVSoA* cpu_clusters;
+
+    cpu_pvs = (TransientVertex *) malloc(ntracks * sizeof(TransientVertex));
+    cpu_clusters = (reco::TransientTrack *) malloc(clusters.size() * max_size * sizeof(reco::TransientTrack)); //1D flattened
+
+
+    /////////////////////////////////////////////////////////
+    ////// MODIFY TYPE / CONVERT TO WHAT'S NEEDED HERE //////
+    /////////////////////////////////////////////////////////
+
+    long unsigned int n_iter[clusters.size()];
+    std::cout << "size of clusters array: " << clusters.size() << "X" << max_size << "\n";
+    //std::cout << "size of cpu_clusters: " << end(cpu_clusters) - begin(cpu_clusters) << "\n";
+    for (long unsigned int i = 0; i < clusters.size(); i++) {
+        std::cout << "i is " << i << ". current size is " << clusters[i].size() << "\n";
+        n_iter[i] = clusters[i].size(); //use in kernel to keep track of bounds on 2D array
+        for (long unsigned int j = 0; j < clusters[i].size(); j++) {
+            std::cout << "j is " << j << "\t";
+            reco::TransientTrack test = clusters[i][j];
+            std::cout << "read ok\t";
+            cpu_clusters[i * max_size + j] = test; //populating rectangular 2D cluster array on valid vals
+            std::cout << "write ok\n";
+        }
+    }
+
     std::cout << "created and allocated all host memory\n";
 
 
     //create and allocate all device memory (pvs and clusters)
-    reco::TransientTrack **cuda_clusters;
+    reco::TransientTrack *cuda_clusters;
     TransientVertex *cuda_pvs;
-    std::cout << "initial defs good\n";
     cudaCheck(cudaMalloc(&cuda_pvs, clusters.size() * sizeof(TransientVertex)));
-    cudaCheck(cudaMalloc(&cuda_clusters, clusters.size() * sizeof(reco::TransientTrack *)));
-    std::cout << "initial cuda mallocs good\n";
+    cudaCheck(cudaMalloc(&cuda_clusters, clusters.size() * max_size * sizeof(reco::TransientTrack)));
 
-    reco::TransientTrack sample_track;
-    long unsigned int max_size = 0;
-    for (long unsigned int i = 0; i < clusters.size(); i++) if (max_size < clusters[i].size()) max_size = clusters[i].size();
-    for (long unsigned int i = 0; i < clusters.size(); i++) {
-        cudaCheck(cudaMalloc(&(cuda_clusters[i]), (max_size+1) * sizeof(reco::TransientTrack))); //this is segfaulting rn
-        std::cout << "cudamalloc of clusters 2d is good\n";
-        for (long unsigned int j = 0; j < clusters[i].size(); j++) {
-            std::cout << "everything until population good\n";
-            cuda_clusters[i][j] = clusters[i][j]; //populating rectangular 2D cluster array on valid vals
-        }
-        cuda_clusters[i][clusters[i].size()] = sample_track; //SET FOR FINAL VALUES, COMPARE IN KERNEL
-    }
     std::cout << "created and allocated all device memory\n";
 
-    //host to device memory copy (NONE NEEDED)
-    //cudaCheck(cudaMemcpy(cuda_clusters, cpu_clusters, memSize1, cudaMemcpyHostToDevice));
-    //cudaCheck(cudaMemcpy(cuda_pvs, cpu_pvs, memSize2, cudaMemcpyHostToDevice));
-    //std::cout << "host memory copied to device memory\n";
-
+    //host to device memory copy
+    cudaCheck(cudaMemcpy(cuda_clusters, cpu_clusters, clusters.size() * max_size * sizeof(reco::TransientTrack), cudaMemcpyHostToDevice));
+    std::cout << "host memory copied to device memory\n";
+    */
 
     //action!
-    /*
     fitterKernel<<<gridSize, blockSize>>>(
-      cuda_pvs,
-      algorithm,
-      cuda_clusters,
-      beamSpot,
-      beamVertexState,
-      clusters.size(),
-      max_size,
-      f4D,
-      validBS,
-      weightFit,
-      fVerbose
+    	ntracks,
+        GPUtracksObject,
+    	GPUverticesObject,
+    	algorithm
     );
     std::cout << "main action complete\n";
-    */
 
     //wait for device to complete / error check
     cudaDeviceSynchronize();
     cudaCheck(cudaGetLastError());
     std::cout << "sync / error check complete\n";
 
+
+    /*
     //device to host memory copy
     cudaCheck(cudaMemcpy(cpu_pvs, cuda_pvs, clusters.size() * sizeof(TransientVertex), cudaMemcpyDeviceToHost));
     std::cout << "device memory copied to host memory\n";
 
     //clear device memory
-    for (long unsigned int i = 0; i < clusters.size(); i++) {
-        cudaCheck(cudaFree(cuda_clusters[i]));
-    }
     cudaCheck(cudaFree(cuda_clusters));
     cudaCheck(cudaFree(cuda_pvs));
     std::cout << "cleared device memory\n\n";
@@ -219,6 +209,8 @@ std::vector<TransientVertex> wrapper(
 
     //done
     return pvs;
+
+    */
 }
 #endif
 }
