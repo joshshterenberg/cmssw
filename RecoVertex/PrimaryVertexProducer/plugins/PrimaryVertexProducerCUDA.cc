@@ -182,13 +182,13 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
     edm::LogError("UnusableBeamSpot") << "No beam spot available from EventSetup";
   }
 
-  bool validBS = true;
+  /*bool validBS = true;
   VertexState beamVertexState(beamSpot);
   if ((beamVertexState.error().cxx() <= 0.) || (beamVertexState.error().cyy() <= 0.) ||
       (beamVertexState.error().czz() <= 0.)) {
     validBS = false;
     edm::LogError("UnusableBeamSpot") << "Beamspot with invalid errors " << beamVertexState.error().matrix();
-  }
+  }*/
 
   //if this is a recovery iteration, check if we already have a valid PV
   if (fRecoveryIteration) {
@@ -435,12 +435,39 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
 
     //should already be sorted
     //if (GPUverticesObject->nTrueVertex(0) > 1) sort(GPUverticesObject->order(0), GPUverticesObject->order(GPUverticesObject->nTrueVertex(0)-1), VertexHigherPtSquared());
-    for (unsigned int i = 0; i < GPUverticesObject->nTrueVertex(0); i++) {
-      auto iv = GPUverticesObject->order(i);
-    //for (TrackForPV::VertexForPvSoA::const_iterator iv = GPUverticesObject->order(0); iv != GPUverticesObject->order(GPUverticesObject->nTrueVertex(0)-1); iv++) {
-      vColl.push_back(*iv);
+    //   for (unsigned int i = 0; i < GPUverticesObject->nTrueVertex(0); i++) {
+    //   auto iv = GPUverticesObject->order(i);
+    //   for (TrackForPV::VertexForPvSoA::const_iterator iv = GPUverticesObject->order(0); iv != GPUverticesObject->order(GPUverticesObject->nTrueVertex(0)-1); iv++) {
+    //  vColl.push_back(*iv);
+    //  }
+    // We have to copy the vertex back to CPU first
+    cudaCheck(cudaMemcpy(CPUverticesObject, GPUverticesObject, sizeof(TrackForPV::VertexForPVSoA), cudaMemcpyDeviceToHost));
+    // Then we iterate over them and apply the conversion
+    for (unsigned int ivertex = 0; ivertex < CPUverticesObject->nTrueVertex(blockIdx.x) ; ivertex++){
+      if (CPUverticesObject->isGood(ivertex)){
+	// I.e. the vertex is correct, so we fill a new one, first we get the error matrix
+        AlgebraicSymMatrix33 newErr;
+        newErr(0, 0) = CPUverticesObject->errx(ivertex);
+        newErr(1, 1) = CPUverticesObject->erry(ivertex);
+        newErr(2, 2) = CPUverticesObject->errz(ivertex);
+        // Then we build the new vertex
+	reco::Vertex newVertex = reco::Vertex(reco::Vertex::Point(CPUverticesObject->x(ivertex), CPUverticesObject->y(ivertex), CPUverticesObject->z(ivertex)),
+                GlobalError(newErr).matrix4D(),
+                CPUverticesObject->t(ivertex), // Without time, for the moment
+                CPUverticesObject->chi2(ivertex),
+                CPUverticesObject->ndof(ivertex),
+                CPUverticesObject->ntracks(ivertex));
+        // And we fill up the track information
+	for (unsigned int itrack = 0; itrack < CPUverticesObject->ntracks(ivertex) ; itrack++){
+          newVertex.add(t_tks.at(CPUverticesObject->track_id(ivertex)(itrack)).trackBaseRef(), CPUverticesObject->track_weight(ivertex)(itrack)); // They are never refitted tracks so this is ok
+        }
+	// We push the new vertex into the collection then
+	vColl.push_back(newVertex);
+      }
     }
 
+
+    // This we can keep as is, if we found no vertex, fill a dummy one
     if (vColl.empty()) {
       GlobalError bse(beamSpot.rotatedCovariance3D());
       if ((bse.cxx() <= 0.) || (bse.cyy() <= 0.) || (bse.czz() <= 0.)) {
