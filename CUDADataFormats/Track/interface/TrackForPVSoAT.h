@@ -54,6 +54,8 @@ public:
   eigenSoA::ScalarSoA<double, S> px;
   eigenSoA::ScalarSoA<double, S> py;
   eigenSoA::ScalarSoA<double, S> pz;
+  eigenSoA::ScalarSoA<double, S> x;
+  eigenSoA::ScalarSoA<double, S> y;
   eigenSoA::ScalarSoA<double, S> dxError;
   eigenSoA::ScalarSoA<double, S> dyError;
   eigenSoA::ScalarSoA<double, S> dzError;
@@ -91,7 +93,16 @@ public:
   eigenSoA::ScalarSoA<double, S> z;
   eigenSoA::ScalarSoA<double, S> x;
   eigenSoA::ScalarSoA<double, S> y;
+  eigenSoA::ScalarSoA<double, S> t; // Without time for the moment
+  eigenSoA::ScalarSoA<double, S> chi2;
+  eigenSoA::ScalarSoA<unsigned int, S> ndof;
+  eigenSoA::ScalarSoA<double, S> errz;
+  eigenSoA::ScalarSoA<double, S> errx;
+  eigenSoA::ScalarSoA<double, S> erry;  
   eigenSoA::ScalarSoA<unsigned int, S> ntracks;
+  // The track-vertex association matrices
+  eigenSoA::MatrixSoA<Vector512d, S> track_id;
+  eigenSoA::MatrixSoA<Vector512d, S> track_weight;
   eigenSoA::ScalarSoA<double, S> rho;
   // Auxiliar vectors
   eigenSoA::ScalarSoA<double, S> aux1;
