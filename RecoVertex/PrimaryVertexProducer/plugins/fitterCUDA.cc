@@ -18,6 +18,7 @@
 //#include <thrust/host_vector.h>
 //#include <thrust/sort.h>
 //#include "HeterogeneousCore/CUDAUtilities/interface/radixSort.h"
+#include <math.h>
 
 namespace fitterCUDA {
 
@@ -25,13 +26,44 @@ namespace fitterCUDA {
 
 __global__ void fitterKernel(
     unsigned int ntracks,
-    TrackForPV::TrackForPVSoA* GPUtracksObject,
-    TrackForPV::VertexForPVSoA* GPUverticesObject,
+    TrackForPV::TrackForPVSoA* tracks,
+    TrackForPV::VertexForPVSoA* vertices,
     algo algorithm
 ){
 //      return;
 // RECOMMENT IF NEEDED FROM HERE
-      int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  
+
+  size_t firstElement = threadIdx.x + blockIdx.x * blockDim.x; // This is going to be the vertex index
+  size_t gridSize = blockDim.x * gridDim.x;
+
+  
+
+  for (unsigned int k = firstElement; k < vertices->nTrueVertex(0); k += gridSize) {
+    if (!vertices->isGood(k)) continue; //skip if not good
+    unsigned int ivertex = vertices->order(k);
+    //z weighted averaging
+    //currently approxs Gaussian with linear (triangular) PDF
+    //only applies PDF to z-axis (ignores x, y, t)
+    unsigned int iavg_z = 0;
+    for (unsigned int kk = 0; kk < vertices->ntracks(ivertex); kk++){
+      unsigned int itrack = tracks->order(kk);
+      //-----crit load, no thread dependence-----
+      double influence = 0;
+      double dist = pow(tracks->z(itrack) - vertices->z(ivertex), 2) / (tracks->dz(itrack) + tracks->dzError(itrack));
+      if (dist <= 9.0) {
+        influence = 1.0 - dist / 9.0;
+      }
+      iavg_z += tracks->z(itrack) * influence;
+    }
+    vertices->z(ivertex) = iavg_z / vertices->ntracks(ivertex);
+  }
+  __syncthreads();
+
+  
+
+
+
 
 //    for (std::vector<std::vector<reco::reco::TransientTrack> >::const_iterator iclus = clusters.begin();
 //         iclus != clusters.end();
@@ -97,20 +129,6 @@ __global__ void fitterKernel(
         v.weightMap(trkWeightMap3d);
       }
 
-      if (fVerbose) {
-        if (v.isValid()) {
-          std::cout << "x,y,z";
-          if (f4D)
-            std::cout << ",t";
-          std::cout << "=" << v.position().x() << " " << v.position().y() << " " << v.position().z();
-          if (f4D)
-            std::cout << " " << v.time();
-          std::cout << " cluster size = " << (*cuda_clusters[i]).size() << std::endl;
-        } else {
-          std::cout << "Invalid fitted vertex,  cluster size=" << (*cuda_clusters[i]).size() << std::endl;
-        }
-      }
-
       if (v.isValid() && (v.degreesOfFreedom() >= algorithm.minNdof) &&
           (!validBS || (*(algorithm.vertexSelector))(v, beamVertexState)))
         cuda_pvs[idx] = v; //pvs.push_back(v);
@@ -132,51 +150,6 @@ void wrapper(
     unsigned int gridSize  = 1;
     std::cout << "defined grid size\n";
 
-
-    /*
-    //create and allocate all host memory (only pvs needed)
-    TransientVertex *cpu_pvs;
-    TrackForPV::TrackForPVSoA* cpu_clusters;
-
-    cpu_pvs = (TransientVertex *) malloc(ntracks * sizeof(TransientVertex));
-    cpu_clusters = (reco::TransientTrack *) malloc(clusters.size() * max_size * sizeof(reco::TransientTrack)); //1D flattened
-
-
-    /////////////////////////////////////////////////////////
-    ////// MODIFY TYPE / CONVERT TO WHAT'S NEEDED HERE //////
-    /////////////////////////////////////////////////////////
-
-    long unsigned int n_iter[clusters.size()];
-    std::cout << "size of clusters array: " << clusters.size() << "X" << max_size << "\n";
-    //std::cout << "size of cpu_clusters: " << end(cpu_clusters) - begin(cpu_clusters) << "\n";
-    for (long unsigned int i = 0; i < clusters.size(); i++) {
-        std::cout << "i is " << i << ". current size is " << clusters[i].size() << "\n";
-        n_iter[i] = clusters[i].size(); //use in kernel to keep track of bounds on 2D array
-        for (long unsigned int j = 0; j < clusters[i].size(); j++) {
-            std::cout << "j is " << j << "\t";
-            reco::TransientTrack test = clusters[i][j];
-            std::cout << "read ok\t";
-            cpu_clusters[i * max_size + j] = test; //populating rectangular 2D cluster array on valid vals
-            std::cout << "write ok\n";
-        }
-    }
-
-    std::cout << "created and allocated all host memory\n";
-
-
-    //create and allocate all device memory (pvs and clusters)
-    reco::TransientTrack *cuda_clusters;
-    TransientVertex *cuda_pvs;
-    cudaCheck(cudaMalloc(&cuda_pvs, clusters.size() * sizeof(TransientVertex)));
-    cudaCheck(cudaMalloc(&cuda_clusters, clusters.size() * max_size * sizeof(reco::TransientTrack)));
-
-    std::cout << "created and allocated all device memory\n";
-
-    //host to device memory copy
-    cudaCheck(cudaMemcpy(cuda_clusters, cpu_clusters, clusters.size() * max_size * sizeof(reco::TransientTrack), cudaMemcpyHostToDevice));
-    std::cout << "host memory copied to device memory\n";
-    */
-
     //action!
     fitterKernel<<<gridSize, blockSize>>>(
     	ntracks,
@@ -184,33 +157,13 @@ void wrapper(
     	GPUverticesObject,
     	algorithm
     );
-    std::cout << "main action complete\n";
+    std::cout << "main action jump\n";
 
     //wait for device to complete / error check
-    cudaDeviceSynchronize();
+    std::cout << "here?\n";
     cudaCheck(cudaGetLastError());
     std::cout << "sync / error check complete\n";
 
-
-    /*
-    //device to host memory copy
-    cudaCheck(cudaMemcpy(cpu_pvs, cuda_pvs, clusters.size() * sizeof(TransientVertex), cudaMemcpyDeviceToHost));
-    std::cout << "device memory copied to host memory\n";
-
-    //clear device memory
-    cudaCheck(cudaFree(cuda_clusters));
-    cudaCheck(cudaFree(cuda_pvs));
-    std::cout << "cleared device memory\n\n";
-
-    //move output array to vector
-    std::vector<TransientVertex> pvs;
-    for (long unsigned int i = 0; i < clusters.size(); i++) pvs.push_back(cpu_pvs[i]); //if statement needed
-    std::cout << "pvs vector created\n";
-
-    //done
-    return pvs;
-
-    */
 }
 #endif
 }

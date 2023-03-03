@@ -20,7 +20,7 @@
 #include "HeterogeneousCore/CUDAUtilities/interface/host_noncached_unique_ptr.h"
 
 #include "HeterogeneousCore/CUDAUtilities/interface/cudaCheck.h"
-
+#include <unistd.h> //del if weird
 PrimaryVertexProducerCUDA::PrimaryVertexProducerCUDA(const edm::ParameterSet& conf)
     : theTTBToken(esConsumes(edm::ESInputTag("", "TransientTrackBuilder"))), theConfig(conf) {
   fVerbose = conf.getUntrackedParameter<bool>("verbose", false);
@@ -409,7 +409,8 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
 
 
   //change to just first algo with beamspot constraint
-  for (std::vector<algo>::const_iterator algorithm = algorithms.begin(); algorithm != algorithms.end(); algorithm++) {
+  //for (std::vector<algo>::const_iterator algorithm = algorithms.begin(); algorithm != algorithms.end(); algorithm++) {
+  std::vector<algo>::const_iterator algorithm = algorithms.begin();
     auto result = std::make_unique<reco::VertexCollection>();
     reco::VertexCollection& vColl = (*result);
     std::vector<TransientVertex> pvs;
@@ -441,15 +442,21 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
     //  vColl.push_back(*iv);
     //  }
     // We have to copy the vertex back to CPU first
+
+    //syncing first because memcpy is a sync op
+    cudaCheck(cudaDeviceSynchronize());
     cudaCheck(cudaMemcpy(CPUverticesObject, GPUverticesObject, sizeof(TrackForPV::VertexForPVSoA), cudaMemcpyDeviceToHost));
+    std::cout << "over cudaCheck\n";
+
     // Then we iterate over them and apply the conversion
-    for (unsigned int ivertex = 0; ivertex < CPUverticesObject->nTrueVertex(blockIdx.x) ; ivertex++){
+    for (unsigned int ivertex = 0; ivertex < CPUverticesObject->nTrueVertex(0) ; ivertex++){
       if (CPUverticesObject->isGood(ivertex)){
 	// I.e. the vertex is correct, so we fill a new one, first we get the error matrix
         AlgebraicSymMatrix33 newErr;
         newErr(0, 0) = CPUverticesObject->errx(ivertex);
         newErr(1, 1) = CPUverticesObject->erry(ivertex);
         newErr(2, 2) = CPUverticesObject->errz(ivertex);
+        std::cout << "got err matrix\n";
         // Then we build the new vertex
 	reco::Vertex newVertex = reco::Vertex(reco::Vertex::Point(CPUverticesObject->x(ivertex), CPUverticesObject->y(ivertex), CPUverticesObject->z(ivertex)),
                 GlobalError(newErr).matrix4D(),
@@ -457,15 +464,18 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
                 CPUverticesObject->chi2(ivertex),
                 CPUverticesObject->ndof(ivertex),
                 CPUverticesObject->ntracks(ivertex));
+        std::cout << "built new vertex\n";
         // And we fill up the track information
 	for (unsigned int itrack = 0; itrack < CPUverticesObject->ntracks(ivertex) ; itrack++){
           newVertex.add(t_tks.at(CPUverticesObject->track_id(ivertex)(itrack)).trackBaseRef(), CPUverticesObject->track_weight(ivertex)(itrack)); // They are never refitted tracks so this is ok
         }
+        std::cout << "filled track info\n";
 	// We push the new vertex into the collection then
 	vColl.push_back(newVertex);
+        std::cout << "pushed back\n";
       }
     }
-
+    std::cout << "done w loop\n";
 
     // This we can keep as is, if we found no vertex, fill a dummy one
     if (vColl.empty()) {
@@ -505,7 +515,7 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
       }
     }
     iEvent.put(std::move(result), algorithm->label);
-  }
+  //}
 
 
 
