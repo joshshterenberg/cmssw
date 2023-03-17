@@ -38,7 +38,7 @@ __global__ void fitterKernel(
   size_t gridSize = blockDim.x * gridDim.x;
 
   
-
+  //1 block for each vertex (for block in BLOCKS)
   for (unsigned int k = firstElement; k < vertices->nTrueVertex(0); k += gridSize) {
     if (!vertices->isGood(k)) continue; //skip if not good
     unsigned int ivertex = vertices->order(k);
@@ -46,6 +46,7 @@ __global__ void fitterKernel(
     //currently approxs Gaussian with linear (triangular) PDF
     //only applies PDF to z-axis (ignores x, y, t)
     unsigned int iavg_z = 0;
+    //1 thread / track (for each thread in block)
     for (unsigned int kk = 0; kk < vertices->ntracks(ivertex); kk++){
       unsigned int itrack = tracks->order(kk);
       //-----crit load, no thread dependence-----
@@ -146,9 +147,8 @@ void wrapper(
 ){
 
     //defines grid
-    unsigned int blockSize = 1;
-    unsigned int gridSize  = 1;
-    std::cout << "defined grid size\n";
+    unsigned int blockSize = 1; //optimal size depends, probably 1 block, multiple threads per vertex
+    unsigned int gridSize  = 1; //might need experimental determination
 
     //action!
     fitterKernel<<<gridSize, blockSize>>>(
@@ -157,13 +157,8 @@ void wrapper(
     	GPUverticesObject,
     	algorithm
     );
-    std::cout << "main action jump\n";
 
-    //wait for device to complete / error check
-    std::cout << "here?\n";
     cudaCheck(cudaGetLastError());
-    std::cout << "sync / error check complete\n";
-
 }
 #endif
 }

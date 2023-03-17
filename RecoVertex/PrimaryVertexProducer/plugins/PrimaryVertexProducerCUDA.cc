@@ -422,7 +422,7 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
     algorithm_for_fitter.useBeamConstraint = (*algorithm).useBeamConstraint;
     algorithm_for_fitter.minNdof = (*algorithm).minNdof;
 
-    fitterCUDA::wrapper(ntracks, GPUtracksObject, GPUverticesObject, algorithm_for_fitter);
+    //fitterCUDA::wrapper(ntracks, GPUtracksObject, GPUverticesObject, algorithm_for_fitter); //comment out and see what happens
 
     //copy over back to CPU, keep conditionals below the same
     //conversion happens here//

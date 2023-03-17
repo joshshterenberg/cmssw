@@ -102,7 +102,6 @@ namespace WeightedMeanFitter {
                 && std::pow(p.first.y() - old_y, 2) / (wx + err_x) < mu*mu
                 && std::pow(p.first.z() - old_z, 2) / (wz + err_z) < mu*mu) xpull = 1.;
 
-              //// JS_EDIT
               //// gaussian weighting
               if (xpull == 1) {
                   float coeff = std::pow(2/(M_PI*(wz+err_z)),0.25);
