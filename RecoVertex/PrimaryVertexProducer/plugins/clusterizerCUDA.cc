@@ -886,54 +886,57 @@ __global__ void verticesAndClusterizeKernel(unsigned int ntracks, TrackForPV::Tr
 	vertices->ntracks(ivertex)++;
       }
     }
-    if (not(vertices->ntracks(ivertex) < 1)){
+    if (vertices->ntracks(ivertex) < 1){
       vertices->isGood(ivertex) = false; // No longer needed
       continue; //Skip vertex if it has no tracks
     }
+    //else{
+    //  vertices->isGood(ivertex) = true;
+    //}
     // If we are here, we are going to fit the vertex later, so just in case initialize this
     vertices->x(ivertex) = 0;
     vertices->y(ivertex) = 0;
   }
-  __syncthreads();
+  __syncthreads(); 
   // From here it used to be clusterize
-  // So we now check whether each vertex is further enough from the previous one
-  for (unsigned int k = firstElement; k < vertices->nTrueVertex(0); k+= gridSize) {
-    int prevVertex = k-1;
-    unsigned int thisVertex = (int) vertices->order(k);
-    if (not(vertices->isGood(thisVertex))){
-      continue;
-    }
-    while (!(vertices->isGood(vertices->order(prevVertex)) && prevVertex >= 0)){
-      // Find the previous vertex that was good
-      prevVertex--;
-    }
-    if ((prevVertex < 0)){ // If it is first, always good
-      vertices->isGood(thisVertex) = true;
-    }
-    else if (std::abs(vertices->z(thisVertex)-vertices->z(prevVertex)) > (2* params.vertexSize)){ //If it is further away enough, it is also good
-      vertices->isGood(thisVertex) = true;
-    }
-    else{
-      vertices->isGood(thisVertex) = false;
-    }
-  }
-  // This is new, basically we have to deal with the order being broken by the invalidation of vertexes and set back again the vertex multiplicity, unfortunately can't be parallelized without competing conditions
-  __syncthreads();
   if (threadIdx.x == 0 && blockIdx.x == 0){
+    // So we now check whether each vertex is further enough from the previous one
+    for (unsigned int k = 0; k < vertices->nTrueVertex(0); k++) {
+      int prevVertex = ((int) k)-1;
+      unsigned int thisVertex = (int) vertices->order(k);
+      if (not(vertices->isGood(thisVertex))){
+        continue;
+      }
+      while (!(vertices->isGood(vertices->order(prevVertex))) && prevVertex >= 0){
+        // Find the previous vertex that was good
+        prevVertex--;
+      }
+      if ((prevVertex < 0)){ // If it is first, always good
+        vertices->isGood(thisVertex) = true;
+      }
+      else if (std::abs(vertices->z(thisVertex)-vertices->z(prevVertex)) > (2* params.vertexSize)){ //If it is further away enough, it is also good
+        vertices->isGood(thisVertex) = true;
+      }
+      else{
+        vertices->isGood(thisVertex) = false;
+      }
+    }
+    // This is new, basically we have to deal with the order being broken by the invalidation of vertexes and set back again the vertex multiplicity, unfortunately can't be parallelized without competing conditions
     unsigned int k = 0;
     while (k != vertices->nTrueVertex(0)){
       unsigned int thisVertex = vertices->order(k);
-      if (vertices->isGood(k)){ // If is good just continue
+      if (vertices->isGood(thisVertex)){ // If is good just continue
         k++;
       }
       else{
-        for (unsigned int l = vertices->nTrueVertex(0)-1; l >= k; l --){ //If it is bad, move one position all indexes
+        for (unsigned int l = k ; l < vertices->nTrueVertex(0) ; l++){ //If it is bad, move one position all indexes
 	  vertices->order(l) = vertices->order(l+1);
 	}
         vertices->nTrueVertex(0)--; // And reduce vertex number by 1
       }
     }
   }
+  __syncthreads();
 }
 
 __global__ void bigKernel(unsigned int ntracks, TrackForPV::TrackForPVSoA* tracks, TrackForPV::VertexForPVSoA* vertices, clusterParameters params, double* osumtkwt, double* beta){
