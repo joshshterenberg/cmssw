@@ -3,6 +3,7 @@
 
 eval `scramv1 runtime -sh`
 
+cmsenv
 cmsRun vertexTest.py
 cmsRun vertexTest.py gpu=False
 

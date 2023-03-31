@@ -20,9 +20,9 @@
 //#include "HeterogeneousCore/CUDAUtilities/interface/radixSort.h"
 #include <math.h>
 
+using Vector512d = Eigen::Matrix<double, 1024, 1>;
+
 namespace fitterCUDA {
-
-
 
 __global__ void fitterKernel(
     unsigned int ntracks,
@@ -30,38 +30,104 @@ __global__ void fitterKernel(
     TrackForPV::VertexForPVSoA* vertices,
     algo algorithm
 ){
-//      return;
-// RECOMMENT IF NEEDED FROM HERE
-  
 
-  size_t firstElement = threadIdx.x + blockIdx.x * blockDim.x; // This is going to be the vertex index
+  /*
+	OUTPUTS:
+		DONE nTrueVertex (filled in clusterizer)
+		DONE isGood flag (filled in clusterizer, can be modified (for now no mod))
+		DONE x, y, z, t
+		DONE chi2 (dep. on errs)
+		DONE ndof (+1 per track if track has any influence)
+		DONE errx, erry, errz
+		DONE ntracks (same as ndof)
+		DONE track_id (type Vector512d, save position here. ignoring...)
+		DONE track_weight (type Vector512d, save weight in order here. ignoring...)
+  */
+
+
+  size_t firstElement = threadIdx.x + blockIdx.x * blockDim.x;
   size_t gridSize = blockDim.x * gridDim.x;
+  float precision = 1e-24;
 
-  
   //1 block for each vertex (for block in BLOCKS)
   for (unsigned int k = firstElement; k < vertices->nTrueVertex(0); k += gridSize) {
     if (!vertices->isGood(k)) continue; //skip if not good
     unsigned int ivertex = vertices->order(k);
-    //z weighted averaging
-    //currently approxs Gaussian with linear (triangular) PDF
-    //only applies PDF to z-axis (ignores x, y, t)
-    unsigned int iavg_z = 0;
+
+    //position/vector loop
     //1 thread / track (for each thread in block)
+    unsigned int iavg_x = 0, iavg_y = 0, iavg_z = 0, iavgt = 0;
+    Vector512d track_ids, track_weights;
     for (unsigned int kk = 0; kk < vertices->ntracks(ivertex); kk++){
       unsigned int itrack = tracks->order(kk);
-      //-----crit load, no thread dependence-----
+      track_ids[itrack] = itrack;
+
+      //GAUSSEAN WEIGHTING (just in z for now)
       double influence = 0;
-      double dist = pow(tracks->z(itrack) - vertices->z(ivertex), 2) / (tracks->dz(itrack) + tracks->dzError(itrack));
+      float wz = (tracks->dzError(itrack) <= precision) ? pow(precision,2) : pow(tracks->dzError(itrack),2);
+      double dist = pow(tracks->dz(itrack) - vertices->z(ivertex), 2) / //change to x/dx?
+                    (wz); //add err_z?
       if (dist <= 9.0) {
         influence = 1.0 - dist / 9.0;
+        vertices->ndof(ivertex) += 1;
+        vertices->ntracks(ivertex) += 1;
       }
-      iavg_z += tracks->z(itrack) * influence;
-    }
-    vertices->z(ivertex) = iavg_z / vertices->ntracks(ivertex);
-  }
-  __syncthreads();
 
-  
+      track_weights[itrack] = influence;
+
+      iavg_x += tracks->x(itrack) * influence;
+      iavg_y += tracks->y(itrack) * influence;
+      iavg_z += tracks->z(itrack) * influence;
+      //iavgt  += tracks->t(itrack) * influence; //not using
+    }
+    vertices->x(ivertex) = iavg_x / vertices->ntracks(ivertex);
+    vertices->y(ivertex) = iavg_y / vertices->ntracks(ivertex);
+    vertices->z(ivertex) = iavg_z / vertices->ntracks(ivertex);
+    //vertices->t(ivertex) = iavgt  / vertices->ntracks(ivertex);
+
+    vertices->track_id(ivertex) = track_ids;
+    vertices->track_weight(ivertex) = track_weights;
+
+    __syncthreads(); //not sure if needed, just in case RAW
+
+    //errs loop, similar deal
+    double s1x = 0, s1y = 0, s1z = 0, s2x = 0, s2y = 0, s2z = 0;
+    for (unsigned int kk = 0; kk < vertices->ntracks(ivertex); kk++){
+      unsigned int itrack = tracks->order(kk);
+      s1x += tracks->dxError(itrack); //maybe change to dx?
+      s1y += tracks->dyError(itrack);
+      s1z += tracks->dzError(itrack);
+      s2x += (s1x + tracks->weight(itrack));
+      s2y += (s1y + tracks->weight(itrack));
+      s2z += (s1z + tracks->weight(itrack));
+    }
+    vertices->errx(ivertex) = s1x / s2x;
+    vertices->erry(ivertex) = s1y / s2y;
+    vertices->errz(ivertex) = s1z / s2z;
+
+    __syncthreads();
+
+
+    //chi2 loop, similar deal
+    double dist = 0;
+    for (unsigned int kk = 0; kk < vertices->ntracks(ivertex); kk++){
+      unsigned int itrack = tracks->order(kk);
+      float wx = (tracks->dxError(itrack) <= precision) ? precision : tracks->dxError(itrack); //maybe change to dx?
+      float wy = (tracks->dyError(itrack) <= precision) ? precision : tracks->dyError(itrack);
+      float wz = (tracks->dzError(itrack) <= precision) ? precision : tracks->dzError(itrack);
+      dist +=       pow(tracks->dx(itrack) - vertices->x(ivertex), 2) / //maybe change to x?
+                    (pow(wx, 2) + vertices->errx(ivertex));
+      dist +=       pow(tracks->dy(itrack) - vertices->y(ivertex), 2) /
+                    (pow(wy, 2) + vertices->erry(ivertex));
+      dist +=       pow(tracks->dz(itrack) - vertices->z(ivertex), 2) /
+                    (pow(wz, 2) + vertices->errz(ivertex));
+    }
+    vertices->chi2(ivertex) = dist; //likely eliminated RAW dependence here
+
+    __syncthreads();
+
+  }
+
 
 
 
@@ -147,7 +213,7 @@ void wrapper(
 ){
 
     //defines grid
-    unsigned int blockSize = 1; //optimal size depends, probably 1 block, multiple threads per vertex
+    unsigned int blockSize = 512; //optimal size depends, probably 1 block, multiple threads per vertex
     unsigned int gridSize  = 1; //might need experimental determination
 
     //action!
