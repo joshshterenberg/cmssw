@@ -22,6 +22,7 @@ PrimaryVertexProducer::PrimaryVertexProducer(const edm::ParameterSet& conf)
   trkToken = consumes<reco::TrackCollection>(conf.getParameter<edm::InputTag>("TrackLabel"));
   bsToken = consumes<reco::BeamSpot>(conf.getParameter<edm::InputTag>("beamSpotLabel"));
   f4D = false;
+  weightFit = false;
 
   // select and configure the track selection
   std::string trackSelectionAlgorithm =
@@ -76,6 +77,9 @@ PrimaryVertexProducer::PrimaryVertexProducer(const edm::ParameterSet& conf)
       algorithm.fitter = new KalmanVertexFitter();
     } else if (fitterAlgorithm == "AdaptiveVertexFitter") {
       algorithm.fitter = new AdaptiveVertexFitter(GeometricAnnealing(algoconf->getParameter<double>("chi2cutoff")));
+    } else if (fitterAlgorithm == "WeightedMeanFitter") {
+      algorithm.fitter = nullptr;
+      weightFit = true;
     } else {
       throw VertexException("PrimaryVertexProducer: unknown algorithm: " + fitterAlgorithm);
     }
@@ -229,11 +233,42 @@ void PrimaryVertexProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
       }
 
       TransientVertex v;
+      if(algorithm->fitter){
       if (algorithm->useBeamConstraint && validBS && (iclus->size() > 1)) {
         v = algorithm->fitter->vertex(*iclus, beamSpot);
       } else if (!(algorithm->useBeamConstraint) && (iclus->size() > 1)) {
         v = algorithm->fitter->vertex(*iclus);
-      }  // else: no fit ==> v.isValid()=False
+      }// else: no fit ==> v.isValid()=False
+      }else if(weightFit)
+      {
+        std::vector<std::pair<GlobalPoint, GlobalPoint>> points;
+        if (algorithm->useBeamConstraint && validBS && (iclus->size() > 1)) {
+            for (const auto& itrack : *iclus){
+                   GlobalPoint p =  itrack.stateAtBeamLine().trackStateAtPCA().position();
+                   GlobalPoint err(itrack.stateAtBeamLine().transverseImpactParameter().error(), itrack.stateAtBeamLine().transverseImpactParameter().error(), itrack.track().dzError());
+                   std::pair<GlobalPoint, GlobalPoint> p2(p, err);
+                   points.push_back(p2);
+            }
+            v = WeightedMeanFitter::weightedMeanOutlierRejectionBeamSpot(points, *iclus, beamSpot);
+            if ((v.positionError().matrix())(2,2) != (WeightedMeanFitter::startError*WeightedMeanFitter::startError)) pvs.push_back(v);
+
+        }
+        else if (!(algorithm->useBeamConstraint) && (iclus->size() > 1)) {
+           for (const auto& itrack : *iclus){
+                   GlobalPoint p = itrack.impactPointState().globalPosition();
+                   GlobalPoint err(itrack.track().dxyError(), itrack.track().dxyError(), itrack.track().dzError());
+                   std::pair<GlobalPoint, GlobalPoint> p2(p, err);
+                   points.push_back(p2);
+           }
+           v = WeightedMeanFitter::weightedMeanOutlierRejection(points, *iclus);
+           if ((v.positionError().matrix())(2,2) != (WeightedMeanFitter::startError*WeightedMeanFitter::startError)) pvs.push_back(v); //FIX with constants
+
+        }
+      }
+      else
+        throw VertexException(
+            "PrimaryVertexProducer: Something went wrong. You are not using the weighted mean fit and no algorithm was selected.");
+
 
       // 4D vertices: add timing information
       if (f4D and v.isValid()) {
@@ -258,7 +293,7 @@ void PrimaryVertexProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
         }
       }
 
-      if (v.isValid() && (v.degreesOfFreedom() >= algorithm->minNdof) &&
+      if (v.isValid() && not weightFit && (v.degreesOfFreedom() >= algorithm->minNdof) &&
           (!validBS || (*(algorithm->vertexSelector))(v, beamVertexState)))
         pvs.push_back(v);
     }  // end of cluster loop

@@ -448,7 +448,8 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
     cudaCheck(cudaMemcpy(CPUverticesObject, GPUverticesObject, sizeof(TrackForPV::VertexForPVSoA), cudaMemcpyDeviceToHost));
 
     // Then we iterate over them and apply the conversion
-    for (unsigned int ivertex = 0; ivertex < CPUverticesObject->nTrueVertex(0) ; ivertex++){
+    for (unsigned int k = 0; k < CPUverticesObject->nTrueVertex(0) ; k++){
+      unsigned int ivertex = CPUverticesObject->order(k);
       if (CPUverticesObject->isGood(ivertex)){
 	// I.e. the vertex is correct, so we fill a new one, first we get the error matrix
         AlgebraicSymMatrix33 newErr;
