@@ -47,7 +47,7 @@ __global__ void fitterKernel(
 
   size_t firstElement = threadIdx.x + blockIdx.x * blockDim.x;
   size_t gridSize = blockDim.x * gridDim.x;
-  double precision = 1e-24; //FLOAT CHANGE
+  double precision = 1e-5; //FLOAT CHANGE
 
   //1 block for each vertex (for block in BLOCKS)
   for (unsigned int k = firstElement; k < vertices->nTrueVertex(0); k += gridSize) {
@@ -180,22 +180,17 @@ __global__ void fitterKernel(
         double wy = (tracks->dxy2(itrack) <= precision) ? precision : tracks->dxy2(itrack);
         double wz = (tracks->dz2(itrack) <= precision) ? precision : tracks->dz2(itrack);
 
-        printf("x,y,z: %f, %f, %f\n", tracks->x(itrack), tracks->y(itrack), tracks->z(itrack));
-        printf("vx,vy,vz: %f, %f, %f\n",  vertices->x(ivertex),  vertices->y(ivertex),  vertices->z(ivertex));
-        printf("wx,wy,wz: %f, %f, %f\n", wx, wy, wz);
-        printf("errx,erry,errz: %f, %f, %f\n", vertices->errx(ivertex), vertices->erry(ivertex), vertices->errz(ivertex));
+        //printf("wx,wy,wz: %f, %f, %f\n", wx, wy, wz);
+        //printf("errx,erry,errz: %f, %f, %f\n", vertices->errx(ivertex), vertices->erry(ivertex), vertices->errz(ivertex));
 
         dist =        pow(tracks->x(itrack) - vertices->x(ivertex), 2) /
                       (wx + vertices->errx(ivertex));
-        printf("dist post x: %f\n", dist);
         dist +=       pow(tracks->y(itrack) - vertices->y(ivertex), 2) /
                       (wy + vertices->erry(ivertex));
-        printf("dist post y: %f\n", dist);
         dist +=       pow(tracks->z(itrack) - vertices->z(ivertex), 2) /
                       (wz + vertices->errz(ivertex));
-        printf("dist post z: %f\n", dist);
+        //printf("%f\n", dist);
         chi2 += dist;
-        //chi2 += tracks->chi2(itrack); //TODO: TAKE OUT OF DATAFORMAT
       }
     }
 
@@ -203,7 +198,7 @@ __global__ void fitterKernel(
     vertices->chi2(ivertex) = chi2; //requirement
     //weight tracks by chi2?
 
-
+/*
     printf("%d, %f, %f, %f, %d, %f, %f\n",
       ivertex,
       vertices->x(ivertex),
@@ -213,7 +208,7 @@ __global__ void fitterKernel(
       vertices->errz(ivertex),
       vertices->chi2(ivertex)
     );
-
+*/
   }
 }
 
@@ -227,7 +222,7 @@ void wrapper(
 ){
 
     //defines grid
-    unsigned int blockSize = 1; //optimal size depends, probably 1 block, multiple threads per vertex
+    unsigned int blockSize = 512; //optimal size depends, probably 1 block, multiple threads per vertex
     unsigned int gridSize  = 1; //might need experimental determination
 
     //action!

@@ -9,8 +9,8 @@ cmsenv
 scram b -j 12
 cd RecoVertex/PrimaryVertexProducer/test
 cmsenv
-cmsRun vertexTest.py n=1
+cmsRun vertexTest.py
 
-#harvestTrackValidationPlots.py test_dqm_gpu.root -o gpu.root
-#rm -r plots/
-#makeTrackValidationPlots.py gpu.root cpu.root --png --extended
+harvestTrackValidationPlots.py test_dqm_gpu.root -o gpu.root
+rm -r plots/
+makeTrackValidationPlots.py gpu.root cpu.root --png --extended

@@ -341,7 +341,6 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
             CPUtracksObject->kmax(nTrueTracks) = 1;
             CPUtracksObject->aux1(nTrueTracks) = 0;
             CPUtracksObject->aux2(nTrueTracks) = 0;
-            CPUtracksObject->chi2(nTrueTracks) = chi2;
             //std::cout << nTrueTracks << "," << z << "," << weight << "," << dz2 << std::endl;
             nTrueTracks++;
 //            if (z > max_z) max_z = z;

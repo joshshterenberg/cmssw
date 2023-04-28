@@ -43,7 +43,7 @@ public:
   //eigenSoA::ScalarSoA<double, S> bx;
   //eigenSoA::ScalarSoA<double, S> by;
 
-  eigenSoA::ScalarSoA<double, S> chi2;
+  //eigenSoA::ScalarSoA<double, S> chi2;
 
   //eigenSoA::ScalarSoA<int8_t, S> nPixelHits;
   //eigenSoA::ScalarSoA<int8_t, S> nTrackerHits;
