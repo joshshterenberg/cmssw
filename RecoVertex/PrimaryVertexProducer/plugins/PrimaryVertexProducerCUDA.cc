@@ -264,7 +264,9 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
     double pt2AtPCA             = t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().momentum().perp2();
     double bx		= t_tks.at(idx).stateAtBeamLine().beamSpot().BeamWidthX();
     double by		= t_tks.at(idx).stateAtBeamLine().beamSpot().BeamWidthY();
-    double z		= t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().position().z();
+    double x		= t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().position().x();
+    double y            = t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().position().y();
+    double z            = t_tks.at(idx).stateAtBeamLine().trackStateAtPCA().position().z();
     double etaAtIP		= std::fabs(t_tks.at(idx).impactPointState().globalMomentum().eta());
     double chi2		= t_tks.at(idx).normalizedChi2();
     int8_t nPixelHits		= t_tks.at(idx).hitPattern().pixelLayersWithMeasurement();
@@ -326,16 +328,20 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
                 break;
             }
             (*CPUosumtkwtObject) += weight;
+            CPUtracksObject->x(nTrueTracks) = x;
+            CPUtracksObject->y(nTrueTracks) = y;
             CPUtracksObject->z(nTrueTracks) = z;
             CPUtracksObject->weight(nTrueTracks) = weight;
             CPUtracksObject->tt_index(nTrueTracks) = idx;
             CPUtracksObject->dz2(nTrueTracks) = dz2;
+            CPUtracksObject->dxy2(nTrueTracks) = dxy2;
             CPUtracksObject->order(nTrueTracks) = nTrueTracks;
             CPUtracksObject->sum_Z(nTrueTracks) = 0;
             CPUtracksObject->kmin(nTrueTracks) = 0; // will loop from kmin to kmax-1. At the start only one vertex
             CPUtracksObject->kmax(nTrueTracks) = 1;
             CPUtracksObject->aux1(nTrueTracks) = 0;
             CPUtracksObject->aux2(nTrueTracks) = 0;
+            CPUtracksObject->chi2(nTrueTracks) = chi2;
             //std::cout << nTrueTracks << "," << z << "," << weight << "," << dz2 << std::endl;
             nTrueTracks++;
 //            if (z > max_z) max_z = z;
@@ -354,6 +360,7 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
   ////////////////////////////////////////////////////////////////////
 //  std::cout << "Begin copying 1" << std::endl;
 //  std::cout << "size of tracks: " << sizeof(TrackForPV::TrackForPVSoA) << std::endl;
+// y
 //  std::cout << "size of vertices: " << sizeof(TrackForPV::VertexForPVSoA) << std::endl;
   cudaCheck(cudaMemcpy(GPUtracksObject, CPUtracksObject, sizeof(TrackForPV::TrackForPVSoA), cudaMemcpyHostToDevice));
 //  std::cout << "Finished copying 1\nBegin copying osumtkwt" << std::endl;
@@ -422,7 +429,7 @@ void PrimaryVertexProducerCUDA::produce(edm::Event& iEvent, const edm::EventSetu
     algorithm_for_fitter.useBeamConstraint = (*algorithm).useBeamConstraint;
     algorithm_for_fitter.minNdof = (*algorithm).minNdof;
 
-    fitterCUDA::wrapper(ntracks, GPUtracksObject, GPUverticesObject, algorithm_for_fitter); //comment out and see what happens
+    fitterCUDA::wrapper(ntracks, GPUtracksObject, GPUverticesObject, algorithm_for_fitter);
 
     //copy over back to CPU, keep conditionals below the same
     //conversion happens here//

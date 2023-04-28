@@ -279,19 +279,19 @@ void PrimaryVertexProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
         v.weightMap(trkWeightMap3d);
       }
 
-      if (fVerbose) {
+      //if (fVerbose) {
         if (v.isValid()) {
           std::cout << "x,y,z";
           if (f4D)
             std::cout << ",t";
-          std::cout << "=" << v.position().x() << " " << v.position().y() << " " << v.position().z();
+          std::cout << ", " << v.position().x() << ", " << v.position().y() << ", " << v.position().z();
           if (f4D)
             std::cout << " " << v.time();
-          std::cout << " cluster size = " << (*iclus).size() << std::endl;
+          std::cout << ", cluster size, " << (*iclus).size() << ", chi2, " << v.totalChiSquared() << std::endl;
         } else {
           std::cout << "Invalid fitted vertex,  cluster size=" << (*iclus).size() << std::endl;
         }
-      }
+      //}
 
       if (v.isValid() && not weightFit && (v.degreesOfFreedom() >= algorithm->minNdof) &&
           (!validBS || (*(algorithm->vertexSelector))(v, beamVertexState)))

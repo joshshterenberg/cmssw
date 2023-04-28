@@ -6,7 +6,7 @@ cd ../../../
 clear
 cmsenv
 #scram b clean
-scram b -j 12 USER_CXXFLAGS="-g"
+scram b -j 12
 cd RecoVertex/PrimaryVertexProducer/test
 cmsenv
 cmsRun vertexTest.py n=1

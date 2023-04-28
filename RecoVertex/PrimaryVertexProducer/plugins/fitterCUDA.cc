@@ -47,7 +47,7 @@ __global__ void fitterKernel(
 
   size_t firstElement = threadIdx.x + blockIdx.x * blockDim.x;
   size_t gridSize = blockDim.x * gridDim.x;
-  double precision = 1.0; //FLOAT CHANGE
+  double precision = 1e-24; //FLOAT CHANGE
 
   //1 block for each vertex (for block in BLOCKS)
   for (unsigned int k = firstElement; k < vertices->nTrueVertex(0); k += gridSize) {
@@ -80,7 +80,8 @@ __global__ void fitterKernel(
 
     //loop to calculate z weighted average ("old_z")
     double old_z = 0, old_x = 0, old_y = 0;
-    double s_wz = 0;
+    double s_wx = 0, s_wy = 0, s_wz = 0;
+
     for (unsigned int kk = 0; kk < tracks->nTrueTracks; kk++){
       unsigned int itrack = tracks->order(kk);
       unsigned int ivtxFromTk = tracks->kmin(itrack);
@@ -88,23 +89,25 @@ __global__ void fitterKernel(
         //this is a valid track that is associated with this vertex
         track_ids[track_id_counter] = itrack;
         track_id_counter++;
-        //double wx = (tracks->dx2(itrack) < precision) ? 1./pow(tracks->dx2(itrack),2) : 1./pow(precision,2);
-        //double wy = (tracks->dy2(itrack) < precision) ? 1./pow(tracks->dy2(itrack),2) : 1./pow(precision,2);
-        double wz = (tracks->dz2(itrack) < precision) ? 1./tracks->dz2(itrack) : 1./precision; //dz2 is already squared, precision is too
+        //double wx = (tracks->dxy2(itrack) > precision) ? 1./tracks->dxy2(itrack) : 1./precision;
+        //double wy = (tracks->dxy2(itrack) > precision) ? 1./tracks->dxy2(itrack) : 1./precision;
+        double wz = (tracks->dz2(itrack) > precision) ? 1./tracks->dz2(itrack) : 1./precision;
         old_z += tracks->z(itrack) * wz;
-        //old_x += tracks->x(itrack) * wx;
-        //old_y += tracks->y(itrack) * wy;
+        old_x += tracks->x(itrack) * 1; //mod
+        old_y += tracks->y(itrack) * 1;
         s_wz += wz;
-        //s_wx += wx;
-        //s_wy += wy;
+        s_wx += 1;
+        s_wy += 1;
       }
     }
-    //old_x /= s_wx;
-    //old_y /= s_wy;
+
+
+    old_x /= s_wx;
+    old_y /= s_wy;
     old_z /= s_wz;
 
-    //err_x = 1/s_wx;
-    //err_y = 1/s_wy;
+    err_x = 1/s_wx;
+    err_y = 1/s_wy;
     err_z = 1/s_wz;
 
     vertices->track_id(ivertex) = track_ids;
@@ -112,155 +115,106 @@ __global__ void fitterKernel(
     //loop to calculate vertex positions
 
     double iavg_x = 0, iavg_y = 0, iavg_z = 0;
-    s_wz = 0;
-    int s1x = 0, s1y = 0, s1z = 0;
+    s_wz = 0; s_wy = 0; s_wx = 0;
+    double s2x = 0, s2y = 0, s2z = 0;
+
     for (unsigned int kk = 0; kk < tracks->nTrueTracks; kk++){
       unsigned int itrack = tracks->order(kk);
       unsigned int ivtxFromTk = tracks->kmin(itrack);
       if (ivtxFromTk == k) {
-        ////GAUSSEAN WEIGHTING (just triangular in z for now)
+        ////WEIGHTING
         double influence = 0;
-        //double wx = (tracks->dx(itrack) <= precision) ? pow(precision,2) : pow(tracks->dx(itrack),2);
-        //double wy = (tracks->dy(itrack) <= precision) ? pow(precision,2) : pow(tracks->dy(itrack),2);
-        double wz = (tracks->dz2(itrack) < precision) ? tracks->dz2(itrack) : precision; //???
+        double wx = (tracks->dxy2(itrack) <= precision) ? precision : tracks->dxy2(itrack);
+        double wy = (tracks->dxy2(itrack) <= precision) ? precision : tracks->dxy2(itrack);
+        double wz = (tracks->dz2(itrack) <= precision) ? precision : tracks->dz2(itrack);
         double distz = pow(tracks->z(itrack) - old_z, 2) / (wz + err_z);
-        //double distx = pow(tracks->x(itrack) - old_x, 2) / (wx + err_x);
-        //double disty = pow(tracks->y(itrack) - old_y, 2) / (wy + err_y);
-        if (distz < 9.0) {
-          influence = 1.0; //straight in z for now (- abs(distz)/3.0)
+        double distx = pow(tracks->x(itrack) - old_x, 2) / (wx + err_x);
+        double disty = pow(tracks->y(itrack) - old_y, 2) / (wy + err_y);
+
+        if (distz + distx + disty < 9.0) {
+          influence = 1;
           vertices->ndof(ivertex) += 1;
           vertices->ntracks(ivertex) += 1;
           track_weights[track_weight_counter] = influence;
         } else {
           track_weights[track_weight_counter] = 0;
-          //continue;
         }
         track_weight_counter++;
         ////
 
-        //iavg_x += tracks->x(itrack) * (influence / wx);
-        //iavg_y += tracks->y(itrack) * (influence / wy);
+        iavg_x += tracks->x(itrack) * (influence / wx);
+        iavg_y += tracks->y(itrack) * (influence / wy);
         iavg_z += tracks->z(itrack) * (influence / wz);
 
-        //s_wx += wx;
-        //s_wy += wy;
-        s_wz += influence / wz; //CHECK
+        s_wx += influence / wx;
+        s_wy += influence / wy;
+        s_wz += influence / wz;
 
-        //s1x += wx * influence;
-        //s1y += wy * influence;
-        s1z += influence * influence / wz; //CHECK
+        s2x += influence * influence / wx;
+        s2y += influence * influence / wy;
+        s2z += influence * influence / wz;
       }
     }
-    //vertices->x(ivertex) = iavg_x / s_wx;
-    //vertices->y(ivertex) = iavg_y / s_wy;
+
+    vertices->x(ivertex) = old_x; //mod_ just the average pos
+    vertices->y(ivertex) = old_y;
     vertices->z(ivertex) = iavg_z / s_wz;
 
     vertices->track_weight(ivertex) = track_weights;
 
-    //vertices->errx(ivertex) = s1x * pow(corr_x,2) / pow(s_wx,2);
-    //vertices->erry(ivertex) = s1y * pow(corr_y,2) / pow(s_wy,2);
-    vertices->errz(ivertex) = s1z * pow(corr_z,2) / pow(s_wz,2);
-
-    printf("current vertex: %d\t old_z: %f\t vertices->z: %f\n", ivertex, old_z, vertices->z(ivertex));
+    vertices->errx(ivertex) = s2x * pow(corr_x,2) / pow(s_wx,2);
+    vertices->erry(ivertex) = s2y * pow(corr_y,2) / pow(s_wy,2);
+    vertices->errz(ivertex) = s2z * pow(corr_z,2) / pow(s_wz,2);
 
     //----------------------------------chi2 loop-------------------------------------
     //creates error: GammaContinuedFraction::a too large, ITMAX too small
-    /*
+    //maybe just average chi2s from the tracks? those are being calculated anyway.
+
     double dist = 0, chi2 = 0;
-    for (unsigned int kk = 0; kk < vertices->ntracks(ivertex); kk++){
+    for (unsigned int kk = 0; kk < tracks->nTrueTracks; kk++){
       unsigned int itrack = tracks->order(kk);
       unsigned int ivtxFromTk = tracks->kmin(itrack);
       if (ivtxFromTk == k) {
-        double wx = (tracks->dx(itrack) <= precision) ? precision : tracks->dx(itrack);
-        double wy = (tracks->dy(itrack) <= precision) ? precision : tracks->dy(itrack);
-        double wz = (tracks->dz(itrack) <= precision) ? precision : tracks->dz(itrack);
-        dist =        pow(tracks->x(itrack) - old_x, 2) /
-                      (pow(wx, 2) + vertices->errx(ivertex));
-        dist +=       pow(tracks->y(itrack) - old_y, 2) /
-                      (pow(wy, 2) + vertices->erry(ivertex));
-        dist +=       pow(tracks->z(itrack) - old_z, 2) /
-                      (pow(wz, 2) + vertices->errz(ivertex));
+
+        double wx = (tracks->dxy2(itrack) <= precision) ? precision : tracks->dxy2(itrack);
+        double wy = (tracks->dxy2(itrack) <= precision) ? precision : tracks->dxy2(itrack);
+        double wz = (tracks->dz2(itrack) <= precision) ? precision : tracks->dz2(itrack);
+
+        printf("x,y,z: %f, %f, %f\n", tracks->x(itrack), tracks->y(itrack), tracks->z(itrack));
+        printf("vx,vy,vz: %f, %f, %f\n",  vertices->x(ivertex),  vertices->y(ivertex),  vertices->z(ivertex));
+        printf("wx,wy,wz: %f, %f, %f\n", wx, wy, wz);
+        printf("errx,erry,errz: %f, %f, %f\n", vertices->errx(ivertex), vertices->erry(ivertex), vertices->errz(ivertex));
+
+        dist =        pow(tracks->x(itrack) - vertices->x(ivertex), 2) /
+                      (wx + vertices->errx(ivertex));
+        printf("dist post x: %f\n", dist);
+        dist +=       pow(tracks->y(itrack) - vertices->y(ivertex), 2) /
+                      (wy + vertices->erry(ivertex));
+        printf("dist post y: %f\n", dist);
+        dist +=       pow(tracks->z(itrack) - vertices->z(ivertex), 2) /
+                      (wz + vertices->errz(ivertex));
+        printf("dist post z: %f\n", dist);
         chi2 += dist;
+        //chi2 += tracks->chi2(itrack); //TODO: TAKE OUT OF DATAFORMAT
       }
     }
-    vertices->chi2(ivertex) = chi2;
-    */
+
+
+    vertices->chi2(ivertex) = chi2; //requirement
+    //weight tracks by chi2?
+
+
+    printf("%d, %f, %f, %f, %d, %f, %f\n",
+      ivertex,
+      vertices->x(ivertex),
+      vertices->y(ivertex),
+      vertices->z(ivertex),
+      vertices->ntracks(ivertex),
+      vertices->errz(ivertex),
+      vertices->chi2(ivertex)
+    );
 
   }
-
-
-
-
-
-//    for (std::vector<std::vector<reco::reco::TransientTrack> >::const_iterator iclus = clusters.begin();
-//         iclus != clusters.end();
-//         iclus++) {
-
-/*
-      for (int i = 0; i < clusters_size; i++) {
-      double sumwt = 0.;
-      double sumwt2 = 0.;
-      double sumw = 0.;
-      double meantime = 0.;
-      double vartime = 0.;
-      if (f4D) {
-        for (int j = 0; j < max_size; j++) {
-          const double time = cuda_clusters[i][j].timeExt();
-          const double err = cuda_clusters[i][j].dtErrorExt();
-          const double inverr = err > 0. ? 1.0 / err : 0.;
-          const double w = inverr * inverr;
-          sumwt += w * time;
-          sumwt2 += w * time * time;
-          sumw += w;
-        }
-        meantime = sumwt / sumw;
-        double sumsq = sumwt2 - sumwt * sumwt / sumw;
-        double chisq = max_size > 1 ? sumsq / double(max_size - 1) : sumsq / double(max_size);
-        vartime = chisq / sumw;
-      }
-
-      TransientVertex v;
-
-      if (weightFit) {
-        std::vector<std::pair<GlobalPoint, GlobalPoint>> points;
-        if (algorithm.useBeamConstraint && validBS && (max_size > 1)) {
-            for (int j = 0; j < max_size; j++){
-                   GlobalPoint p =  cuda_clusters[i][j].stateAtBeamLine().trackStateAtPCA().position();
-                   GlobalPoint err(cuda_clusters[i][j].stateAtBeamLine().transverseImpactParameter().error(), cuda_clusters[i][j].stateAtBeamLine().transverseImpactParameter().error(), cuda_clusters[i][j].track().dzError());
-                   std::pair<GlobalPoint, GlobalPoint> p2(p, err);
-                   points.push_back(p2);
-            }
-            v = WeightedMeanFitter::weightedMeanOutlierRejectionBeamSpot(points, *cuda_clusters[i], beamSpot);
-            if ((v.positionError().matrix())(2,2) != (WeightedMeanFitter::startError*WeightedMeanFitter::startError)) cuda_pvs[idx] = v; //pvs.push_back(v);
-
-        }
-        else if (!(algorithm.useBeamConstraint) && (cuda_clusters[i]->size() > 1)) {
-           for (int j = 0; j < max_size; j++){
-                   GlobalPoint p = cuda_clusters[i][j].impactPointState().globalPosition();
-                   GlobalPoint err(cuda_clusters[i][j].track().dxyError(), cuda_clusters[i][j].track().dxyError(), cuda_clusters[i][j].track().dzError());
-                   std::pair<GlobalPoint, GlobalPoint> p2(p, err);
-                   points.push_back(p2);
-           }
-           v = WeightedMeanFitter::weightedMeanOutlierRejection(points, *cuda_clusters[i]);
-           if ((v.positionError().matrix())(2,2) != (WeightedMeanFitter::startError*WeightedMeanFitter::startError)) cuda_pvs[idx] = v; //pvs.push_back(v); //FIX with constants
-
-        }
-      }
-
-      // 4D vertices: add timing information
-      if (f4D and v.isValid()) {
-        auto err = v.positionError().matrix4D();
-        err(3, 3) = vartime;
-        auto trkWeightMap3d = v.weightMap();  // copy the 3d-fit weights
-        v = TransientVertex(v.position(), meantime, err, v.originalTracks(), v.totalChiSquared(), v.degreesOfFreedom());
-        v.weightMap(trkWeightMap3d);
-      }
-
-      if (v.isValid() && (v.degreesOfFreedom() >= algorithm.minNdof) &&
-          (!validBS || (*(algorithm.vertexSelector))(v, beamVertexState)))
-        cuda_pvs[idx] = v; //pvs.push_back(v);
-    }
-*/
 }
 
 
